@@ -2,7 +2,7 @@
 
 Event-driven trade settlement and ledger engine, built in Go with Kafka, Postgres, and Redis, with an existing C++ matching engine plugged in as the matcher.
 
-Status: planning complete, Weekend 1 not started.
+Status: planning complete, Phase 1 not started.
 
 ---
 
@@ -59,7 +59,7 @@ Built to close specific resume gaps that came up repeatedly in backend, infrastr
 | Area | Requirement |
 |---|---|
 | Career goal | Every component maps to a resume gap (section 1). |
-| Scope and time | About 4 weekends. Correctness before features. Cut the dashboard or cloud deploy before cutting tests. |
+| Scope and time | Phase-gated: move on when a phase meets its "done when" criteria, no fixed calendar. Correctness before features. Cut the dashboard or cloud deploy before cutting tests. |
 | Budget | $0. Local development plus Oracle Cloud Always Free for the live demo. |
 | Documentation | README with architecture, short design-decision notes (example: "why an outbox instead of dual writes"), benchmark report with graphs. |
 | Demo | Live read-only Grafana dashboard. 2-minute video of a chaos test showing the ledger survives. |
@@ -341,11 +341,11 @@ Rule: write invariant tests (section 4.2) before writing the settlement logic.
 
 | Phase | Scope | Done when |
 |---|---|---|
-| Weekend 1 | Settlement service + Postgres ledger + dedupe + invariant tests. No Kafka yet (feed trades from a test harness). | Invariant tests pass, duplicate trades never double-post |
-| Weekend 2 | Kafka (orders, trades, ledger-events, DLQ), outbox relay, retries, matcher adapter + gRPC to C++ engine, gateway with Redis idempotency | One order flows end to end into the ledger |
-| Weekend 3 | OpenTelemetry, Prometheus, Grafana, load tests, chaos tests, benchmark report | Report with latency/throughput graphs and chaos results |
-| Weekend 4 | Helm charts, kind locally, Terraform + k3s on Oracle, optional TS React balance dashboard | Live read-only demo online |
-| Optional 5 | Small AI agent that answers "why is this balance off?" by calling tools against ledger and reconciler | Agent with tool calls + a small eval set |
+| Phase 1 | Settlement service + Postgres ledger + dedupe + invariant tests. No Kafka yet (feed trades from a test harness). | Invariant tests pass, duplicate trades never double-post |
+| Phase 2 | Kafka (orders, trades, ledger-events, DLQ), outbox relay, retries, matcher adapter + gRPC to C++ engine, gateway with Redis idempotency | One order flows end to end into the ledger |
+| Phase 3 | OpenTelemetry, Prometheus, Grafana, load tests, chaos tests, benchmark report | Report with latency/throughput graphs and chaos results |
+| Phase 4 | Helm charts, kind locally, Terraform + k3s on Oracle, optional TS React balance dashboard | Live read-only demo online |
+| Phase 5 (optional) | Small AI agent that answers "why is this balance off?" by calling tools against ledger and reconciler | Agent with tool calls + a small eval set |
 
 ---
 

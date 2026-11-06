@@ -1,6 +1,13 @@
 services:
   postgres:
     image: postgres:16
+    # Durability is non-negotiable (CLAUDE.md). These are the defaults, pinned explicitly.
+    command: ["postgres", "-c", "synchronous_commit=on", "-c", "fsync=on"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clearline -d clearline"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
     environment:
       POSTGRES_USER: clearline
       POSTGRES_PASSWORD: clearline

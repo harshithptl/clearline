@@ -5,7 +5,7 @@ Event-driven trade settlement and ledger engine. Go services, Kafka, Postgres, R
 @docs/SPEC.md
 
 ## Current status
-- Planning done. Next: Weekend 1 (settlement service, Postgres ledger, dedupe, invariant tests). See SPEC section 11.
+- Planning done. Next: Phase 1 (settlement service, Postgres ledger, dedupe, invariant tests). See SPEC section 11.
 - Update this line as phases complete.
 
 ## Hard rules for this codebase
@@ -28,7 +28,7 @@ Event-driven trade settlement and ledger engine. Go services, Kafka, Postgres, R
 ## Commands
 (Fill in as they exist.)
 - Run stack locally: `docker compose -f deploy/compose/docker-compose.yml up -d`
-- Run Go tests: `go test ./...`
+- Run Go tests: `go test ./...` (needs compose Postgres up; each test gets its own throwaway database via `internal/pgtest`, override with `CLEARLINE_TEST_DATABASE_URL`)
 - Load test: TBD
 - Chaos tests: TBD
 - Local database URL: postgres://clearline:clearline@127.0.0.1:5432/clearline?sslmode=disable
