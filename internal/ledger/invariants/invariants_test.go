@@ -55,21 +55,35 @@ func markProcessed(t *testing.T, conn *pgx.Conn, eventID string) {
 	}
 }
 
-func addOutbox(t *testing.T, conn *pgx.Conn, eventID string) {
+// addOutbox writes one ledger-events outbox row for (trade, account).
+func addOutbox(t *testing.T, conn *pgx.Conn, tradeID, account string) {
+	t.Helper()
+	addOutboxTopic(t, conn, tradeID, invariants.LedgerEventsTopic, account)
+}
+
+func addOutboxTopic(t *testing.T, conn *pgx.Conn, tradeID, topic, key string) {
 	t.Helper()
 	_, err := conn.Exec(context.Background(),
-		`INSERT INTO outbox (event_id, topic, key, payload) VALUES ($1, 'ledger-events', 'k', '{}')`, eventID)
+		`INSERT INTO outbox (event_id, source_event_id, topic, key, payload) VALUES ($1, $2, $3, $4, '{}')`,
+		tradeID+":"+topic+":"+key, tradeID, topic, key)
 	if err != nil {
-		t.Fatalf("add outbox %s: %v", eventID, err)
+		t.Fatalf("add outbox %s/%s/%s: %v", tradeID, topic, key, err)
 	}
 }
 
-// settleCorrectly writes everything a correct settlement would write.
+// settleCorrectly writes everything a correct settlement would write:
+// ledger rows, the processed event, and one outbox row per account touched.
 func settleCorrectly(t *testing.T, conn *pgx.Conn, tradeID string, rows []row) {
 	t.Helper()
 	postLedger(t, conn, tradeID, rows)
 	markProcessed(t, conn, tradeID)
-	addOutbox(t, conn, tradeID)
+	seen := map[string]bool{}
+	for _, r := range rows {
+		if !seen[r.account] {
+			seen[r.account] = true
+			addOutbox(t, conn, tradeID, r.account)
+		}
+	}
 }
 
 func check(t *testing.T, conn *pgx.Conn) invariants.Report {
@@ -162,18 +176,71 @@ func TestTinyImbalanceDetected(t *testing.T) {
 	})
 }
 
-// A trade marked processed but with no outbox row means downstream services
-// would never hear about it.
-func TestMissingOutboxRowDetected(t *testing.T) {
+// Bob's event was never queued: his balance would silently never update.
+func TestOutboxMissingOneAccount(t *testing.T) {
 	conn := pgtest.NewDB(t)
 	seedAccounts(t, conn, "alice", "bob")
-	settleCorrectly(t, conn, "T1", t42)
+	settleCorrectly(t, conn, "T1", t42) // a correct trade alongside, must not be reported
 	postLedger(t, conn, "T42", t42)
-	markProcessed(t, conn, "T42") // no addOutbox
+	markProcessed(t, conn, "T42")
+	addOutbox(t, conn, "T42", "alice") // bob missing
 
 	rep := check(t, conn)
-	requireEqual(t, "missing outbox", rep.MissingOutbox, []string{"T42"})
+	requireEqual(t, "outbox mismatches", rep.OutboxMismatches, []invariants.OutboxMismatch{
+		{EventID: "T42", Account: "bob", Problem: invariants.OutboxMissing},
+	})
 	requireEqual(t, "asset imbalances", len(rep.AssetImbalances), 0)
+}
+
+func TestOutboxMissingEntirely(t *testing.T) {
+	conn := pgtest.NewDB(t)
+	seedAccounts(t, conn, "alice", "bob")
+	postLedger(t, conn, "T42", t42)
+	markProcessed(t, conn, "T42")
+
+	rep := check(t, conn)
+	requireEqual(t, "outbox mismatches", rep.OutboxMismatches, []invariants.OutboxMismatch{
+		{EventID: "T42", Account: "alice", Problem: invariants.OutboxMissing},
+		{EventID: "T42", Account: "bob", Problem: invariants.OutboxMissing},
+	})
+}
+
+// An event for an account the trade never touched would move a balance that
+// the ledger says did not change.
+func TestOutboxUnexpectedAccount(t *testing.T) {
+	conn := pgtest.NewDB(t)
+	seedAccounts(t, conn, "alice", "bob", "carol")
+	settleCorrectly(t, conn, "T42", t42)
+	addOutbox(t, conn, "T42", "carol")
+
+	rep := check(t, conn)
+	requireEqual(t, "outbox mismatches", rep.OutboxMismatches, []invariants.OutboxMismatch{
+		{EventID: "T42", Account: "carol", Problem: invariants.OutboxUnexpected},
+	})
+}
+
+// An outbox row whose trade was never settled: an event about nothing.
+func TestOutboxOrphanEvent(t *testing.T) {
+	conn := pgtest.NewDB(t)
+	addOutbox(t, conn, "T99", "alice")
+
+	rep := check(t, conn)
+	requireEqual(t, "outbox mismatches", rep.OutboxMismatches, []invariants.OutboxMismatch{
+		{EventID: "T99", Account: "alice", Problem: invariants.OutboxUnexpected},
+	})
+}
+
+// Rows for other topics are not balance updates and are not checked here.
+func TestOutboxOtherTopicsIgnored(t *testing.T) {
+	conn := pgtest.NewDB(t)
+	seedAccounts(t, conn, "alice", "bob")
+	settleCorrectly(t, conn, "T42", t42)
+	addOutboxTopic(t, conn, "T42", "audit", "T42")
+
+	rep := check(t, conn)
+	if !rep.OK() {
+		t.Fatalf("other-topic rows should be ignored, got %+v", rep)
+	}
 }
 
 // The primary key makes duplicates impossible today. The check exists as a
@@ -186,7 +253,6 @@ func TestDuplicateProcessedEventDetectedIfKeyMissing(t *testing.T) {
 	}
 	markProcessed(t, conn, "T42")
 	markProcessed(t, conn, "T42")
-	addOutbox(t, conn, "T42")
 
 	rep := check(t, conn)
 	requireEqual(t, "duplicate events", rep.DuplicateEvents, []invariants.DuplicateEvent{

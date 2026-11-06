@@ -42,6 +42,7 @@ Kafka delivers messages **at least once**, so a trade can arrive twice. Clearlin
 1. **Dedupe on `event_id`.** Settlement inserts the trade's ID into `processed_events` (primary key) in the same transaction as the ledger rows. A duplicate hits the key and is skipped.
 2. **Ack after commit.** The Kafka offset is acknowledged only after the database commit.
 3. **Transactional outbox.** Settlement never publishes to Kafka directly. It writes the downstream event to an `outbox` table in the same transaction, and a relay publishes it afterward. The ledger write and the event are all or nothing.
+4. **One event per account, not per trade.** `ledger-events` is keyed by account so each account's updates stay in order with one consumer. A trade touches two accounts, so settlement writes two events (`T42:alice`, `T42:bob`), both in the same transaction.
 
 What happens if settlement crashes:
 
@@ -65,7 +66,7 @@ Checked by tests now and by the reconciler later:
 2. For every trade, its ledger rows net to 0 per asset.
 3. Every cached Redis balance equals the sum of that account's ledger rows.
 4. Every `event_id` is processed at most once.
-5. Every settled trade has exactly one outbox row.
+5. Every settled trade has exactly one balance event per account it touched, and no others.
 
 ## Running locally
 
