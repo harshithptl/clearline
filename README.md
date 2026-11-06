@@ -87,6 +87,7 @@ Tests connect to `postgres://clearline:clearline@127.0.0.1:5432/clearline?sslmod
 docs/SPEC.md          full design spec: requirements, architecture, failure handling, targets
 migrations/           SQL schema migrations, embedded into Go and applied in order
 internal/pgtest/      test helper: fresh migrated Postgres database per test
+internal/ledger/invariants/  SQL checks for the SPEC 4.2 ledger invariants
 deploy/compose/       local Docker Compose stack
 ```
 
@@ -107,7 +108,7 @@ Each phase is done when its exit criteria pass, not on a fixed schedule.
 Progress:
 
 - [x] Ledger schema: append-only triggers, constraints, dedupe and outbox tables
-- [ ] Invariant checker
+- [x] Invariant checker (invariants 1, 2, 4, 5)
 - [ ] Ledger entry generation
 - [ ] Settlement transaction with dedupe
 - [ ] Randomized duplicate-delivery test harness
