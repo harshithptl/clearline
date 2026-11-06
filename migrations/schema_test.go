@@ -131,19 +131,37 @@ func TestProcessedEventsDedupe(t *testing.T) {
 	}
 }
 
+const insertOutbox = `INSERT INTO outbox (event_id, source_event_id, topic, key, payload) VALUES ($1, $2, 'ledger-events', $3, '{}')`
+
 func TestOutboxEventIDUnique(t *testing.T) {
 	conn := pgtest.NewDB(t)
-	insert := `INSERT INTO outbox (event_id, topic, key, payload) VALUES ('T42', 'ledger-events', 'alice', '{}')`
-	mustExec(t, conn, insert)
-	_, err := conn.Exec(context.Background(), insert)
+	mustExec(t, conn, insertOutbox, "T42:alice", "T42", "alice")
+	_, err := conn.Exec(context.Background(), insertOutbox, "T42:alice", "T42", "alice")
 	requireCode(t, err, codeUnique)
+}
+
+// Option A: one ledger event per account per trade. Two events for the same
+// (trade, topic, account) must be rejected even if their event_ids differ.
+func TestOutboxOneEventPerAccountPerTrade(t *testing.T) {
+	conn := pgtest.NewDB(t)
+	mustExec(t, conn, insertOutbox, "T42:alice", "T42", "alice")
+	mustExec(t, conn, insertOutbox, "T42:bob", "T42", "bob") // other account: fine
+
+	_, err := conn.Exec(context.Background(), insertOutbox, "T42:alice:again", "T42", "alice")
+	requireCode(t, err, codeUnique)
+}
+
+func TestOutboxRequiresSourceEvent(t *testing.T) {
+	conn := pgtest.NewDB(t)
+	_, err := conn.Exec(context.Background(), insertOutbox, "T42:alice", "", "alice")
+	requireCode(t, err, codeCheck)
 }
 
 // The relay must be able to mark rows published; outbox is not append-only.
 func TestOutboxAllowsMarkPublished(t *testing.T) {
 	conn := pgtest.NewDB(t)
-	mustExec(t, conn, `INSERT INTO outbox (event_id, topic, key, payload) VALUES ('T42', 'ledger-events', 'alice', '{}')`)
-	mustExec(t, conn, `UPDATE outbox SET published_at = now() WHERE event_id = 'T42'`)
+	mustExec(t, conn, insertOutbox, "T42:alice", "T42", "alice")
+	mustExec(t, conn, `UPDATE outbox SET published_at = now() WHERE event_id = 'T42:alice'`)
 }
 
 // Durability rule from CLAUDE.md: never run with synchronous_commit off.

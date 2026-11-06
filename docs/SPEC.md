@@ -121,7 +121,7 @@ Plain-text version:
 | order-gateway | Go | REST API, validation, idempotency check in Redis, publish to `orders` |
 | matcher-adapter | Go | Consume `orders`, call C++ engine over gRPC, publish fills to `trades` |
 | matching engine | C++ | Existing engine (price-time priority, O(1) insert/cancel/lookup, ~5.2µs P50) |
-| settlement-service | Go | Consume `trades`, write ledger rows + outbox row in one transaction, dedupe by `event_id` |
+| settlement-service | Go | Consume `trades`, write ledger rows + one outbox row per account touched in one transaction, dedupe by `event_id` |
 | outbox-relay | Go | Publish unsent outbox rows to `ledger-events`, mark them sent |
 | balance-service | Go | Consume `ledger-events`, update Redis balances (deduped), serve read API |
 | reconciler | Go | Periodically verify ledger invariants and cache consistency, emit metrics and alerts |
@@ -132,7 +132,7 @@ Plain-text version:
 |---|---|---|
 | `orders` | symbol | Kafka only orders messages within a partition. Keying by symbol keeps every order for one symbol in sequence, which matching requires. |
 | `trades` | symbol | Preserves per-symbol order downstream. |
-| `ledger-events` | account | Each account's balance updates apply in order. |
+| `ledger-events` | account | Each account's balance updates apply in order, handled by a single consumer. A trade touches two accounts, so settlement emits one event per account (see 3.4 #6). |
 | `trades.dlq` | original key | Holds messages that failed after all retries, for inspection and replay. |
 
 ### 3.4 Key design decisions
@@ -142,6 +142,7 @@ Plain-text version:
 3. **Transactional outbox.** Settlement never publishes to Kafka directly. It writes the event into an `outbox` table in the same database transaction as the ledger rows, and a relay publishes it afterward. This removes the failure where the database write succeeds but the publish fails, or the reverse.
 4. **Ack after commit + dedupe = exactly-once effect.** Kafka delivers at least once. Consumers acknowledge a message only after their database commit, and skip any `event_id` already processed. Result: each trade takes effect exactly once.
 5. **Never trade durability for speed.** Kafka `acks=all`, Postgres `synchronous_commit=on`. Latency is tuned with batching, not by weakening durability.
+6. **One ledger event per account touched, not per trade.** A trade is one fact but two balance changes, and a Kafka message has one key. Settlement writes one outbox row per account (`T42:alice`, `T42:bob`) in the same transaction as the ledger rows, so every account's updates stay in order on one partition with one writer. Tradeoff: two outbox rows per trade instead of one. The alternative (one event keyed by trade or symbol) spreads an account's updates across partitions, so they can apply out of order and consumers race on the same balance.
 
 ---
 
@@ -152,7 +153,7 @@ flowchart TD
     A[Trade T42 arrives from Kafka: trades] --> B[Begin DB transaction]
     B --> C{Insert event_id T42<br/>into processed_events}
     C -->|conflict: already seen| D[Roll back, skip]
-    C -->|first time| E[Insert 4 ledger rows + 1 outbox row]
+    C -->|first time| E[Insert 4 ledger rows +<br/>1 outbox row per account]
     E --> F[Commit transaction]
     F --> G[Ack Kafka offset]
     D --> G
@@ -171,13 +172,22 @@ Alice buys 10 AAPL at $150 from Bob. Matcher emits trade `T42`. Settlement write
 
 USD nets to 0, AAPL nets to 0.
 
+In the same transaction, settlement writes one outbox row per account touched:
+
+| event_id | source_event_id | topic | key | payload |
+|---|---|---|---|---|
+| T42:alice | T42 | ledger-events | alice | USD -1,500, AAPL +10 |
+| T42:bob | T42 | ledger-events | bob | USD +1,500, AAPL -10 |
+
+A trade's `event_id` in `processed_events` is its `trade_id`.
+
 ### 4.2 Invariants (checked by the reconciler and by tests)
 
 1. For every asset, the sum of all ledger amounts is 0.
 2. For every trade, its ledger rows net to 0 per asset.
 3. Every account's cached balance in Redis equals the sum of its ledger rows.
 4. Every `event_id` appears at most once in `processed_events`.
-5. Every committed trade has exactly one outbox row.
+5. Every committed trade has exactly one `ledger-events` outbox row per account in its ledger rows, and no others.
 
 ---
 
@@ -225,12 +235,14 @@ processed_events(
 -- transactional outbox
 outbox(
   outbox_id    BIGSERIAL PRIMARY KEY,
-  event_id     TEXT NOT NULL UNIQUE,
+  event_id        TEXT NOT NULL UNIQUE,   -- e.g. 'T42:alice'
+  source_event_id TEXT NOT NULL,          -- the trade that produced it, e.g. 'T42'
   topic        TEXT NOT NULL,
   key          TEXT NOT NULL,
   payload      JSONB NOT NULL,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-  published_at TIMESTAMPTZ             -- NULL until relay publishes
+  published_at TIMESTAMPTZ,            -- NULL until relay publishes
+  UNIQUE (source_event_id, topic, key)  -- one event per account per trade
 )
 ```
 
