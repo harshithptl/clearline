@@ -4,7 +4,7 @@ An event-driven trade settlement and double-entry ledger engine. Go services con
 
 The matching engine is the fast part: it matches an order in microseconds. The hard part is everything after a match. Every trade has to be posted to the ledger **exactly once**, never lost, with the books provably balanced, even when messages are redelivered, processes crash mid-write, or brokers restart. Clearline is built around that problem.
 
-> **Status:** in progress. Phase 1 (Postgres ledger, settlement, dedupe, invariant tests) is underway. See [Roadmap](#roadmap). No performance numbers are published yet; every number will come with hardware, settings, and a script to reproduce it.
+> **Status:** in progress. Phase 1 (Postgres ledger, settlement, dedupe, invariant tests) is complete. Phase 2 (Kafka pipeline) is next. See [Roadmap](#roadmap). No performance numbers are published yet; every number will come with hardware, settings, and a script to reproduce it.
 
 ## How a trade flows
 
@@ -78,6 +78,9 @@ docker compose -f deploy/compose/docker-compose.yml up -d --wait
 
 # run all tests (each test gets its own throwaway database)
 go test ./...
+
+# run the settlement harness with a different random seed
+CLEARLINE_HARNESS_SEED=7 go test ./internal/settlement -run Harness -v
 ```
 
 Tests connect to `postgres://clearline:clearline@127.0.0.1:5432/clearline?sslmode=disable` by default. Override with `CLEARLINE_TEST_DATABASE_URL`.
@@ -90,6 +93,7 @@ migrations/           SQL schema migrations, embedded into Go and applied in ord
 internal/pgtest/      test helper: fresh migrated Postgres database per test
 internal/ledger/      trade -> double-entry ledger rows
 internal/ledger/invariants/  SQL checks for the SPEC 4.2 ledger invariants
+internal/settlement/  Settle(): one transaction per trade, dedupe + ledger rows + outbox
 deploy/compose/       local Docker Compose stack
 ```
 
@@ -112,8 +116,9 @@ Progress:
 - [x] Ledger schema: append-only triggers, constraints, dedupe and outbox tables
 - [x] Invariant checker (invariants 1, 2, 4, 5)
 - [x] Ledger entry generation (exact decimals, no silent rounding)
-- [ ] Settlement transaction with dedupe
-- [ ] Randomized duplicate-delivery test harness
+- [x] Settlement transaction with dedupe
+- [x] Randomized duplicate-delivery test harness (concurrent workers, checked against an independent oracle)
+- [ ] Phase 2: Kafka pipeline
 
 ## Design
 
