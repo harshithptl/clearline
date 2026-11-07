@@ -4,6 +4,7 @@ package ledger
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/shopspring/decimal"
 )
@@ -79,6 +80,9 @@ func validate(t Trade) error {
 		return invalid(t, "empty seller")
 	case t.BuyerID == t.SellerID:
 		return invalid(t, "buyer and seller are the same account")
+	case strings.Contains(t.BuyerID, ":") || strings.Contains(t.SellerID, ":"):
+		// ':' separates trade and account in ledger event IDs (migration 0003).
+		return invalid(t, "account ids must not contain ':'")
 	case !t.Quantity.IsPositive():
 		return invalid(t, "quantity must be positive, got "+t.Quantity.String())
 	case !t.Price.IsPositive():
