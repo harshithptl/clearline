@@ -72,6 +72,8 @@ func TestBuildEntriesRejectsInvalid(t *testing.T) {
 		{"empty buyer", func(tr *ledger.Trade) { tr.BuyerID = "" }},
 		{"empty seller", func(tr *ledger.Trade) { tr.SellerID = "" }},
 		{"self trade", func(tr *ledger.Trade) { tr.SellerID = tr.BuyerID }},
+		{"colon in buyer", func(tr *ledger.Trade) { tr.BuyerID = "ali:ce" }},
+		{"colon in seller", func(tr *ledger.Trade) { tr.SellerID = "b:ob" }},
 		{"zero quantity", func(tr *ledger.Trade) { tr.Quantity = d("0") }},
 		{"negative quantity", func(tr *ledger.Trade) { tr.Quantity = d("-1") }},
 		{"zero price", func(tr *ledger.Trade) { tr.Price = d("0") }},

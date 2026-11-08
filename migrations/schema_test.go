@@ -79,6 +79,14 @@ func TestLedgerRequiresKnownAccount(t *testing.T) {
 	requireCode(t, err, codeForeignKey)
 }
 
+// ':' is the separator in ledger event IDs ("T42:alice"), so it is banned in
+// account IDs to keep those IDs unambiguous.
+func TestAccountIDRejectsColon(t *testing.T) {
+	conn := pgtest.NewDB(t)
+	_, err := conn.Exec(context.Background(), `INSERT INTO accounts (account_id) VALUES ('b:c')`)
+	requireCode(t, err, codeCheck)
+}
+
 func TestLedgerRejectsZeroAmount(t *testing.T) {
 	conn := pgtest.NewDB(t)
 	mustExec(t, conn, `INSERT INTO accounts (account_id) VALUES ('alice')`)

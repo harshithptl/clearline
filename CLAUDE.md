@@ -5,7 +5,7 @@ Event-driven trade settlement and ledger engine. Go services, Kafka, Postgres, R
 @docs/SPEC.md
 
 ## Current status
-- Planning done. Next: Phase 1 (settlement service, Postgres ledger, dedupe, invariant tests). See SPEC section 11.
+- Phase 1 done (schema, invariants, BuildEntries, Settle, duplicate-delivery harness). Next: Phase 2 (Kafka pipeline). See SPEC section 11.
 - Update this line as phases complete.
 
 ## Hard rules for this codebase
