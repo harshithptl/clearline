@@ -15,6 +15,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/harshithptl/clearline/migrations"
 )
@@ -93,12 +94,9 @@ func create(t *testing.T) (string, string) {
 		t.Fatalf("pgtest: parse url: %v", err)
 	}
 	cfg.Database = name
-	conn, err := pgx.ConnectConfig(ctx, cfg)
-	if err != nil {
-		t.Fatalf("pgtest: connect to test database: %v", err)
-	}
-	defer conn.Close(ctx)
-	if err := migrations.Apply(ctx, conn); err != nil {
+	db := stdlib.OpenDB(*cfg)
+	defer db.Close()
+	if _, err := migrations.Apply(ctx, db); err != nil {
 		t.Fatalf("pgtest: %v", err)
 	}
 	return adminURL, name

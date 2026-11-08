@@ -1,3 +1,4 @@
+-- +goose Up
 -- 0002_outbox_per_account: one ledger event per account touched by a trade.
 --
 -- ledger-events is keyed by account so each account's updates stay in order

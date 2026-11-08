@@ -27,8 +27,11 @@ Event-driven trade settlement and ledger engine. Go services, Kafka, Postgres, R
 
 ## Commands
 (Fill in as they exist.)
-- Run stack locally: `docker compose -f deploy/compose/docker-compose.yml up -d`
-- Run Go tests: `go test ./...` (needs compose Postgres up; each test gets its own throwaway database via `internal/pgtest`, override with `CLEARLINE_TEST_DATABASE_URL`)
+- Run stack locally: `docker compose -f deploy/compose/docker-compose.yml up -d --wait` (Postgres, Kafka KRaft, Valkey)
+- Apply migrations: `go run ./cmd/migrate` (goose, idempotent)
+- Create Kafka topics: `go run ./cmd/topics` (idempotent)
+- Run Go tests: `go test ./... -race` (needs compose up; each test gets its own database via `internal/pgtest` and its own topics via `internal/kafkatest`; override with `CLEARLINE_TEST_DATABASE_URL`, `CLEARLINE_TEST_KAFKA_BROKERS`)
 - Load test: TBD
 - Chaos tests: TBD
 - Local database URL: postgres://clearline:clearline@127.0.0.1:5432/clearline?sslmode=disable
+- Local Kafka: localhost:9092 from the host, kafka:19092 from containers. Local Valkey: localhost:6379

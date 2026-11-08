@@ -13,6 +13,8 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/harshithptl/clearline/internal/topics"
 )
 
 // Querier is satisfied by *pgx.Conn, pgx.Tx and *pgxpool.Pool, so checks can
@@ -45,7 +47,9 @@ type DuplicateEvent struct {
 
 // LedgerEventsTopic is the topic for per-account balance updates. Its outbox
 // rows use the account ID as the Kafka key.
-const LedgerEventsTopic = "ledger-events"
+// Alias of topics.LedgerEvents, kept here so callers of this package need
+// not import topics.
+const LedgerEventsTopic = topics.LedgerEvents
 
 // OutboxProblem says which way an outbox mismatch goes.
 type OutboxProblem string
