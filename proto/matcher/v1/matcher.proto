@@ -1,0 +1,103 @@
+// Matcher: the C++ matching engine as a gRPC service.
+//
+// Prices cross the wire as integer ticks, never floats. The adapter converts
+// decimal prices to ticks exactly; the engine works in whole ticks.
+//
+// State lives in sessions. OpenSession creates a fresh, isolated set of order
+// books and returns its id; every Submit names its session. A session that
+// disappears (engine restart, eviction) makes Submit fail with NOT_FOUND, and
+// the adapter rebuilds by replaying the orders topic into a new session.
+syntax = "proto3";
+
+package clearline.matcher.v1;
+
+option go_package = "github.com/harshithptl/clearline/gen/matcher/v1;matcherv1";
+
+service Matcher {
+  // Opens a new session with empty books. If the engine is at its session
+  // limit, the least recently used session is evicted.
+  rpc OpenSession(OpenSessionRequest) returns (OpenSessionResponse);
+  // Frees a session. Unknown sessions are ignored.
+  rpc CloseSession(CloseSessionRequest) returns (CloseSessionResponse);
+  // Runs orders through their books, in request order.
+  rpc Submit(SubmitRequest) returns (SubmitResponse);
+}
+
+message BookSpec {
+  string symbol = 1;
+  // Midpoint of the book, in ticks. Prices from
+  // reference_ticks - ticks_each_side to reference_ticks + ticks_each_side
+  // are accepted (and must be > 0).
+  int64 reference_ticks = 2;
+  int32 ticks_each_side = 3;
+  // Order ids must be < max_order_id and strictly increasing per book.
+  uint64 max_order_id = 4;
+  // Most orders resting at once (slab size).
+  uint32 max_resting = 5;
+}
+
+message OpenSessionRequest {
+  repeated BookSpec books = 1;
+}
+
+message OpenSessionResponse {
+  string session = 1;
+}
+
+message CloseSessionRequest {
+  string session = 1;
+}
+
+message CloseSessionResponse {}
+
+enum Side {
+  SIDE_UNSPECIFIED = 0;
+  SIDE_BUY = 1;
+  SIDE_SELL = 2;
+}
+
+message Order {
+  string symbol = 1;
+  uint64 order_id = 2;
+  Side side = 3;
+  int64 price_ticks = 4;
+  uint32 quantity = 5;
+}
+
+enum Status {
+  STATUS_UNSPECIFIED = 0;
+  // Matched and/or resting.
+  STATUS_ACCEPTED = 1;
+  // Price outside the book's range or not positive.
+  STATUS_REJECTED_PRICE = 2;
+  // Book has no free slot for another resting order.
+  STATUS_REJECTED_CAPACITY = 3;
+  // No book for this symbol in the session.
+  STATUS_REJECTED_UNKNOWN_BOOK = 4;
+  // Bad side, zero quantity, or order id not valid for the book.
+  STATUS_REJECTED_INVALID = 5;
+}
+
+// One match against a resting (maker) order, at the maker's price.
+message Fill {
+  uint64 maker_order_id = 1;
+  int64 price_ticks = 2;
+  uint32 quantity = 3;
+}
+
+message OrderResult {
+  Status status = 1;
+  repeated Fill fills = 2;
+  // Quantity left resting in the book after matching (0 if fully filled).
+  uint32 resting_quantity = 3;
+}
+
+message SubmitRequest {
+  string session = 1;
+  repeated Order orders = 2;
+}
+
+message SubmitResponse {
+  // One result per order, same order as the request.
+  repeated OrderResult results = 1;
+}

@@ -64,6 +64,16 @@ func BuildEntries(t Trade) ([]Entry, error) {
 	}, nil
 }
 
+// ValidAccountID reports whether id can be an account id: non-empty and
+// without ':', which separates trade and account in ledger event IDs
+// (migration 0003). Errors wrap ErrInvalidTrade.
+func ValidAccountID(id string) error {
+	if id == "" || strings.Contains(id, ":") {
+		return fmt.Errorf("%w: account id %q must be non-empty without ':'", ErrInvalidTrade, id)
+	}
+	return nil
+}
+
 func validate(t Trade) error {
 	switch {
 	case t.TradeID == "":
@@ -80,8 +90,7 @@ func validate(t Trade) error {
 		return invalid(t, "empty seller")
 	case t.BuyerID == t.SellerID:
 		return invalid(t, "buyer and seller are the same account")
-	case strings.Contains(t.BuyerID, ":") || strings.Contains(t.SellerID, ":"):
-		// ':' separates trade and account in ledger event IDs (migration 0003).
+	case ValidAccountID(t.BuyerID) != nil || ValidAccountID(t.SellerID) != nil:
 		return invalid(t, "account ids must not contain ':'")
 	case !t.Quantity.IsPositive():
 		return invalid(t, "quantity must be positive, got "+t.Quantity.String())

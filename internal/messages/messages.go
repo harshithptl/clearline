@@ -150,3 +150,78 @@ func parseDecimal(field, s string) (decimal.Decimal, error) {
 	}
 	return d, nil
 }
+
+// OrderVersion is the current Order message version.
+const OrderVersion = 1
+
+// Order sides on the wire.
+const (
+	SideBuy  = "buy"
+	SideSell = "sell"
+)
+
+// Order is a message on the orders topic (key = symbol): a limit order.
+// Quantity is a whole number of units; Price is a decimal string.
+type Order struct {
+	Version   int    `json:"version"`
+	OrderID   string `json:"order_id"` // assigned by the gateway, for tracing
+	AccountID string `json:"account_id"`
+	Symbol    string `json:"symbol"`
+	Side      string `json:"side"`
+	Quantity  string `json:"quantity"`
+	Price     string `json:"price"`
+}
+
+// ParsedOrder is a decoded Order with exact numbers.
+type ParsedOrder struct {
+	OrderID   string
+	AccountID string
+	Symbol    string
+	Side      string
+	Quantity  decimal.Decimal
+	Price     decimal.Decimal
+}
+
+// EncodeOrder returns the orders-topic payload.
+func EncodeOrder(o ParsedOrder) ([]byte, error) {
+	return json.Marshal(Order{
+		Version:   OrderVersion,
+		OrderID:   o.OrderID,
+		AccountID: o.AccountID,
+		Symbol:    o.Symbol,
+		Side:      o.Side,
+		Quantity:  o.Quantity.String(),
+		Price:     o.Price.String(),
+	})
+}
+
+// DecodeOrder parses an orders-topic payload. Errors wrap ErrMalformed.
+// Market rules (tick size, known symbol, ...) are checked by the matcher
+// adapter.
+func DecodeOrder(b []byte) (ParsedOrder, error) {
+	var m Order
+	if err := strictUnmarshal(b, &m); err != nil {
+		return ParsedOrder{}, err
+	}
+	if m.Version != OrderVersion {
+		return ParsedOrder{}, fmt.Errorf("%w: order version %d", ErrMalformed, m.Version)
+	}
+	if m.AccountID == "" || m.Symbol == "" {
+		return ParsedOrder{}, fmt.Errorf("%w: order missing account or symbol", ErrMalformed)
+	}
+	if m.Side != SideBuy && m.Side != SideSell {
+		return ParsedOrder{}, fmt.Errorf("%w: order side %q", ErrMalformed, m.Side)
+	}
+	qty, err := parseDecimal("quantity", m.Quantity)
+	if err != nil {
+		return ParsedOrder{}, err
+	}
+	price, err := parseDecimal("price", m.Price)
+	if err != nil {
+		return ParsedOrder{}, err
+	}
+	return ParsedOrder{
+		OrderID: m.OrderID, AccountID: m.AccountID, Symbol: m.Symbol, Side: m.Side,
+		Quantity: qty, Price: price,
+	}, nil
+}
