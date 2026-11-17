@@ -55,11 +55,12 @@ services:
 
   # Valkey: open-source Redis fork, wire compatible. Used for idempotency keys
   # (gateway) and the balance cache (balance service).
-  # appendfsync everysec: the cache is rebuildable from the ledger, so losing up
-  # to 1s of cache writes on a crash is acceptable; the ledger is the source of truth.
+  # appendfsync always: fsync before acknowledging each write. The balance
+  # consumer commits Kafka offsets after Valkey acks, so a write lost on crash
+  # would never be redelivered (and gateway idempotency keys must not vanish).
   valkey:
     image: valkey/valkey:9.1.3-alpine
-    command: ["valkey-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    command: ["valkey-server", "--appendonly", "yes", "--appendfsync", "always"]
     healthcheck:
       test: ["CMD", "valkey-cli", "ping"]
       interval: 2s
@@ -69,6 +70,22 @@ services:
       - "6379:6379"
     volumes:
       - valkeydata:/data
+
+  # C++ matching engine over gRPC (engine/). State is in memory, per session;
+  # the matcher adapter rebuilds it by replaying the orders topic.
+  engine:
+    build:
+      context: ../..
+      dockerfile: engine/Dockerfile
+      target: runtime
+    image: clearline-engine:dev
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/50051"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    ports:
+      - "50051:50051"
 
 volumes:
   pgdata:

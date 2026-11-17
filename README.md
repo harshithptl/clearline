@@ -73,8 +73,8 @@ Checked by tests now and by the reconciler later:
 Requirements: Go 1.27+, Docker.
 
 ```sh
-# start Postgres, Kafka (KRaft, single broker) and Valkey
-docker compose -f deploy/compose/docker-compose.yml up -d --wait
+# start Postgres, Kafka (KRaft, single broker), Valkey and the C++ engine (built in Docker)
+docker compose -f deploy/compose/docker-compose.yml up -d --wait --build
 
 # apply schema migrations and create Kafka topics (both idempotent)
 go run ./cmd/migrate
@@ -87,6 +87,7 @@ go test ./... -race
 CLEARLINE_HARNESS_SEED=7 go test ./internal/settlement -run Harness -v
 
 # run the services (each in its own terminal; Ctrl-C shuts down cleanly)
+go run ./services/matcher-adapter  # orders -> C++ engine -> trades
 go run ./services/settlement     # trades -> ledger + outbox
 go run ./services/outbox-relay   # outbox -> ledger-events
 go run ./services/balance        # ledger-events -> Valkey, GET localhost:8081/balances/{account}
@@ -104,6 +105,11 @@ Tests connect to `postgres://clearline:clearline@127.0.0.1:5432/clearline?sslmod
 
 ```
 docs/SPEC.md          full design spec: requirements, architecture, failure handling, targets
+engine/               C++ order book (from LowLatencyBuffer) + gRPC server, gtest suite, Dockerfile
+proto/                gRPC contract for the engine (integer tick prices, sessions)
+gen/                  generated Go code from proto/ (scripts/gen-proto.sh, runs protoc in Docker)
+services/matcher-adapter/  consumes orders, calls the engine, publishes trades; rebuilds books by replay
+internal/matcher/     adapter logic: tick conversion, deterministic trade ids, replay vs live
 cmd/migrate/          applies pending migrations (goose)
 cmd/topics/           creates Kafka topics (SPEC 3.3)
 cmd/dlq-replay/       republishes dead-lettered trades to their original topic
@@ -130,7 +136,7 @@ deploy/compose/       local Docker Compose stack: Postgres, Kafka, Valkey
 docs/decisions/       short design-decision notes
 ```
 
-Planned: more `services/` (gateway, matcher-adapter), `proto/`, `engine/` (C++ matcher + gRPC server), `deploy/helm/`, `deploy/terraform/`, `loadtest/`, `chaos/`.
+Planned: `services/gateway`, `deploy/helm/`, `deploy/terraform/`, `loadtest/`, `chaos/`.
 
 ## Roadmap
 
@@ -155,7 +161,7 @@ Progress:
 - [x] Settlement service (Kafka consumer, retries, DLQ, replay tool)
 - [x] Outbox relay (single active leader, at-least-once)
 - [x] Balance service + reconciler (all 5 invariants checked)
-- [ ] C++ engine over gRPC + matcher adapter
+- [x] C++ engine over gRPC + matcher adapter (replay-based recovery, decision 0002)
 - [ ] Gateway
 - [ ] End-to-end: one order flows into the ledger
 

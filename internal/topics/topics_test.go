@@ -32,6 +32,42 @@ func TestEnsureIsIdempotent(t *testing.T) {
 	}
 }
 
+// Configs apply on create and are re-applied to an existing topic.
+func TestEnsureAppliesConfigs(t *testing.T) {
+	adm := kadm.NewClient(kafkatest.NewClient(t))
+	ctx := context.Background()
+	name := kafkatest.NewTopic(t, "configs", 1) // created without configs
+	spec := topics.Spec{Name: name, Partitions: 1, Configs: map[string]string{"retention.ms": topics.Forever}}
+	if err := topics.Ensure(ctx, adm, 1, spec); err != nil {
+		t.Fatal(err)
+	}
+	cfgs, err := adm.DescribeTopicConfigs(ctx, name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := cfgs.On(name, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, kv := range c.Configs {
+		if kv.Key == "retention.ms" {
+			if kv.Value == nil || *kv.Value != topics.Forever {
+				t.Fatalf("retention.ms = %v, want %s", kv.MaybeValue(), topics.Forever)
+			}
+			return
+		}
+	}
+	t.Fatal("retention.ms not described")
+}
+
+func TestOrdersKeptForever(t *testing.T) {
+	for _, s := range topics.All {
+		if s.Name == topics.Orders && s.Configs["retention.ms"] != topics.Forever {
+			t.Fatalf("orders retention = %q; replay needs every order", s.Configs["retention.ms"])
+		}
+	}
+}
+
 // The broker must refuse to auto-create topics, so a typo in a topic name
 // fails instead of silently writing to a new topic nobody reads.
 func TestAutoCreateDisabled(t *testing.T) {

@@ -5,7 +5,7 @@ Event-driven trade settlement and ledger engine. Go services, Kafka, Postgres, R
 @docs/SPEC.md
 
 ## Current status
-- Phase 1 done (schema, invariants, BuildEntries, Settle, duplicate-delivery harness). Phase 2 in progress: infra, settlement service, outbox relay, balance service, reconciler done. Next: C++ engine over gRPC + matcher adapter. See SPEC section 11.
+- Phase 1 done (schema, invariants, BuildEntries, Settle, duplicate-delivery harness). Phase 2 in progress: infra, settlement service, outbox relay, balance service, reconciler, C++ engine + matcher adapter done. Next: gateway, then end-to-end. See SPEC section 11.
 - Update this line as phases complete.
 
 ## Hard rules for this codebase
@@ -27,12 +27,14 @@ Event-driven trade settlement and ledger engine. Go services, Kafka, Postgres, R
 
 ## Commands
 (Fill in as they exist.)
-- Run stack locally: `docker compose -f deploy/compose/docker-compose.yml up -d --wait` (Postgres, Kafka KRaft, Valkey)
+- Run stack locally: `docker compose -f deploy/compose/docker-compose.yml up -d --wait --build` (Postgres, Kafka KRaft, Valkey, C++ engine on :50051)
+- C++ engine tests: `docker build -f engine/Dockerfile --target test .`
+- Regenerate Go gRPC code: `scripts/gen-proto.sh` (protoc in Docker; output in `gen/`, committed)
 - Apply migrations: `go run ./cmd/migrate` (goose, idempotent)
 - Create Kafka topics: `go run ./cmd/topics` (idempotent)
-- Run services: `go run ./services/{settlement,outbox-relay,balance,reconciler}` (env `CLEARLINE_DATABASE_URL`, `CLEARLINE_KAFKA_BROKERS`, `CLEARLINE_REDIS_ADDR`); balance API on :8081; `reconciler -once` exits 0 clean / 1 mismatch / 2 lagging
+- Run services: `go run ./services/{matcher-adapter,settlement,outbox-relay,balance,reconciler}` (env `CLEARLINE_DATABASE_URL`, `CLEARLINE_KAFKA_BROKERS`, `CLEARLINE_REDIS_ADDR`); balance API on :8081; `reconciler -once` exits 0 clean / 1 mismatch / 2 lagging
 - Replay DLQ: `go run ./cmd/dlq-replay`
-- Run Go tests: `go test ./... -race` (needs compose up; each test gets its own database via `internal/pgtest` and its own topics via `internal/kafkatest`; its own Valkey key prefix via `internal/redistest`; override with `CLEARLINE_TEST_DATABASE_URL`, `CLEARLINE_TEST_KAFKA_BROKERS`, `CLEARLINE_TEST_REDIS_ADDR`)
+- Run Go tests: `go test ./... -race` (needs compose up; each test gets its own database via `internal/pgtest` and its own topics via `internal/kafkatest`; its own Valkey key prefix via `internal/redistest`; override with `CLEARLINE_TEST_DATABASE_URL`, `CLEARLINE_TEST_KAFKA_BROKERS`, `CLEARLINE_TEST_REDIS_ADDR`, `CLEARLINE_TEST_MATCHER_ADDR`; matcher tests use the compose engine)
 - Load test: TBD
 - Chaos tests: TBD
 - Local database URL: postgres://clearline:clearline@127.0.0.1:5432/clearline?sslmode=disable
