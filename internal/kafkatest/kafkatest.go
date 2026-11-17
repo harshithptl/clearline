@@ -75,3 +75,47 @@ func randomSuffix(t *testing.T) string {
 	}
 	return hex.EncodeToString(b)
 }
+
+// ReadN reads exactly n records from the start of topic without a consumer
+// group, failing the test if they do not arrive within timeout. It then
+// waits briefly and fails if more than n records exist.
+func ReadN(t *testing.T, topic string, n int, timeout time.Duration) []*kgo.Record {
+	t.Helper()
+	cl := NewClient(t,
+		kgo.ConsumeTopics(topic),
+		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
+		kgo.FetchMaxWait(200*time.Millisecond),
+	)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	var recs []*kgo.Record
+	for len(recs) < n {
+		fetches := cl.PollFetches(ctx)
+		if ctx.Err() != nil {
+			t.Fatalf("kafkatest: %s: got %d/%d records", topic, len(recs), n)
+		}
+		if err := fetches.Err(); err != nil {
+			t.Fatalf("kafkatest: fetch %s: %v", topic, err)
+		}
+		recs = append(recs, fetches.Records()...)
+	}
+	extra, cancelExtra := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancelExtra()
+	recs = append(recs, cl.PollFetches(extra).Records()...)
+	if len(recs) != n {
+		t.Fatalf("kafkatest: %s has %d records, want %d", topic, len(recs), n)
+	}
+	return recs
+}
+
+// Eventually polls cond every 20ms until it is true, failing after timeout.
+func Eventually(t *testing.T, timeout time.Duration, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out after %v waiting for %s", timeout, what)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}

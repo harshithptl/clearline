@@ -5,7 +5,7 @@ Event-driven trade settlement and ledger engine. Go services, Kafka, Postgres, R
 @docs/SPEC.md
 
 ## Current status
-- Phase 1 done (schema, invariants, BuildEntries, Settle, duplicate-delivery harness). Next: Phase 2 (Kafka pipeline). See SPEC section 11.
+- Phase 1 done (schema, invariants, BuildEntries, Settle, duplicate-delivery harness). Phase 2 in progress: infra, settlement service, outbox relay done. Next: balance service + reconciler. See SPEC section 11.
 - Update this line as phases complete.
 
 ## Hard rules for this codebase
@@ -30,6 +30,8 @@ Event-driven trade settlement and ledger engine. Go services, Kafka, Postgres, R
 - Run stack locally: `docker compose -f deploy/compose/docker-compose.yml up -d --wait` (Postgres, Kafka KRaft, Valkey)
 - Apply migrations: `go run ./cmd/migrate` (goose, idempotent)
 - Create Kafka topics: `go run ./cmd/topics` (idempotent)
+- Run services: `go run ./services/settlement`, `go run ./services/outbox-relay` (env `CLEARLINE_DATABASE_URL`, `CLEARLINE_KAFKA_BROKERS`)
+- Replay DLQ: `go run ./cmd/dlq-replay`
 - Run Go tests: `go test ./... -race` (needs compose up; each test gets its own database via `internal/pgtest` and its own topics via `internal/kafkatest`; override with `CLEARLINE_TEST_DATABASE_URL`, `CLEARLINE_TEST_KAFKA_BROKERS`)
 - Load test: TBD
 - Chaos tests: TBD
