@@ -26,6 +26,7 @@ import (
 
 	"github.com/harshithptl/clearline/internal/ledger"
 	"github.com/harshithptl/clearline/internal/ledger/invariants"
+	"github.com/harshithptl/clearline/internal/messages"
 )
 
 // Outcome of a successful Settle call. Both outcomes mean "safe to ack".
@@ -56,28 +57,6 @@ var ErrUnknownAccount = errors.New("unknown account")
 // TxBeginner is satisfied by *pgxpool.Pool and *pgx.Conn.
 type TxBeginner interface {
 	Begin(ctx context.Context) (pgx.Tx, error)
-}
-
-// LedgerEvent is the payload of a ledger-events message: one account's
-// balance changes from one trade. Amounts are decimal strings, never JSON
-// numbers, so no consumer parses money as a float.
-type LedgerEvent struct {
-	EventID   string   `json:"event_id"`
-	TradeID   string   `json:"trade_id"`
-	AccountID string   `json:"account_id"`
-	Changes   []Change `json:"changes"`
-}
-
-// Change is a signed balance change for one asset.
-type Change struct {
-	Asset  string `json:"asset"`
-	Amount string `json:"amount"`
-}
-
-// LedgerEventID is the event ID for one account's ledger event from a trade.
-// Unambiguous because account IDs cannot contain ':' (migration 0003).
-func LedgerEventID(tradeID, accountID string) string {
-	return tradeID + ":" + accountID
 }
 
 const (
@@ -151,7 +130,7 @@ func execBatch(ctx context.Context, tx pgx.Tx, batch *pgx.Batch) error {
 }
 
 type encodedEvent struct {
-	event   LedgerEvent
+	event   messages.LedgerEvent
 	payload []byte
 }
 
@@ -159,19 +138,20 @@ type encodedEvent struct {
 // first appearance (buyer, then seller).
 func buildEvents(tradeID string, entries []ledger.Entry) ([]encodedEvent, error) {
 	var order []string
-	byAccount := map[string]*LedgerEvent{}
+	byAccount := map[string]*messages.LedgerEvent{}
 	for _, e := range entries {
 		ev, ok := byAccount[e.AccountID]
 		if !ok {
-			ev = &LedgerEvent{
-				EventID:   LedgerEventID(tradeID, e.AccountID),
+			ev = &messages.LedgerEvent{
+				Version:   messages.LedgerEventVersion,
+				EventID:   messages.LedgerEventID(tradeID, e.AccountID),
 				TradeID:   tradeID,
 				AccountID: e.AccountID,
 			}
 			byAccount[e.AccountID] = ev
 			order = append(order, e.AccountID)
 		}
-		ev.Changes = append(ev.Changes, Change{Asset: e.Asset, Amount: e.Amount.String()})
+		ev.Changes = append(ev.Changes, messages.Change{Asset: e.Asset, Amount: e.Amount.String()})
 	}
 
 	out := make([]encodedEvent, 0, len(order))

@@ -15,10 +15,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
 
+	"github.com/harshithptl/clearline/internal/env"
 	"github.com/harshithptl/clearline/migrations"
 )
-
-const defaultURL = "postgres://clearline:clearline@127.0.0.1:5432/clearline?sslmode=disable"
 
 func main() {
 	if err := run(); err != nil {
@@ -28,11 +27,7 @@ func main() {
 }
 
 func run() error {
-	url := os.Getenv("CLEARLINE_DATABASE_URL")
-	if url == "" {
-		url = defaultURL
-	}
-	cfg, err := pgx.ParseConfig(url)
+	cfg, err := pgx.ParseConfig(env.DatabaseURL())
 	if err != nil {
 		return fmt.Errorf("parse database url: %w", err)
 	}

@@ -85,7 +85,16 @@ go test ./... -race
 
 # run the settlement harness with a different random seed
 CLEARLINE_HARNESS_SEED=7 go test ./internal/settlement -run Harness -v
+
+# run the services (each in its own terminal; Ctrl-C shuts down cleanly)
+go run ./services/settlement     # trades -> ledger + outbox
+go run ./services/outbox-relay   # outbox -> ledger-events
+
+# after fixing whatever sent trades to the DLQ, replay them
+go run ./cmd/dlq-replay
 ```
+
+Services read `CLEARLINE_DATABASE_URL` and `CLEARLINE_KAFKA_BROKERS` (defaults point at the compose stack).
 
 Tests connect to `postgres://clearline:clearline@127.0.0.1:5432/clearline?sslmode=disable` by default. Override with `CLEARLINE_TEST_DATABASE_URL`.
 
@@ -95,18 +104,26 @@ Tests connect to `postgres://clearline:clearline@127.0.0.1:5432/clearline?sslmod
 docs/SPEC.md          full design spec: requirements, architecture, failure handling, targets
 cmd/migrate/          applies pending migrations (goose)
 cmd/topics/           creates Kafka topics (SPEC 3.3)
+cmd/dlq-replay/       republishes dead-lettered trades to their original topic
+services/settlement/  trades consumer: settle, retry with backoff, DLQ, commit offsets after the DB commit
+services/outbox-relay/  publishes outbox rows to ledger-events; one active instance via an advisory lock
 migrations/           SQL schema migrations, embedded into Go, applied by goose
 internal/pgtest/      test helper: fresh migrated Postgres database per test
 internal/kafkatest/   test helper: unique Kafka topics and consumer groups per test
 internal/topics/      topic names, partition counts, idempotent creation
 internal/ledger/      trade -> double-entry ledger rows
 internal/ledger/invariants/  SQL checks for the SPEC 4.2 ledger invariants
-internal/settlement/  Settle(): one transaction per trade, dedupe + ledger rows + outbox
+internal/settlement/  Settle(): one transaction per trade, dedupe + ledger rows + outbox; the trades Consumer
+internal/outbox/      outbox relay loop
+internal/messages/    versioned JSON wire formats (money as decimal strings)
+internal/dlq/         dead-letter record format and replay
+internal/backoff/     exponential backoff with jitter
+internal/env/         service configuration from environment variables
 deploy/compose/       local Docker Compose stack: Postgres, Kafka, Valkey
 docs/decisions/       short design-decision notes
 ```
 
-Planned: `services/` (gateway, matcher-adapter, settlement, outbox-relay, balance, reconciler), `proto/`, `engine/` (C++ matcher + gRPC server), `deploy/helm/`, `deploy/terraform/`, `loadtest/`, `chaos/`.
+Planned: more `services/` (gateway, matcher-adapter, balance, reconciler), `proto/`, `engine/` (C++ matcher + gRPC server), `deploy/helm/`, `deploy/terraform/`, `loadtest/`, `chaos/`.
 
 ## Roadmap
 
@@ -128,8 +145,8 @@ Progress:
 - [x] Settlement transaction with dedupe
 - [x] Randomized duplicate-delivery test harness (concurrent workers, checked against an independent oracle)
 - [x] Phase 2 infra: Kafka (KRaft) + Valkey in compose, goose migrations, topic creation
-- [ ] Settlement service (Kafka consumer, retries, DLQ)
-- [ ] Outbox relay
+- [x] Settlement service (Kafka consumer, retries, DLQ, replay tool)
+- [x] Outbox relay (single active leader, at-least-once)
 - [ ] Balance service + reconciler
 - [ ] C++ engine over gRPC + matcher adapter
 - [ ] Gateway

@@ -12,6 +12,7 @@ import (
 
 	"github.com/harshithptl/clearline/internal/ledger"
 	"github.com/harshithptl/clearline/internal/ledger/invariants"
+	"github.com/harshithptl/clearline/internal/messages"
 	"github.com/harshithptl/clearline/internal/pgtest"
 	"github.com/harshithptl/clearline/internal/settlement"
 )
@@ -96,7 +97,7 @@ func TestSettlePostsTrade(t *testing.T) {
 	defer rows.Close()
 	type outboxRow struct {
 		eventID, source, topic, key string
-		payload                     settlement.LedgerEvent
+		payload                     messages.LedgerEvent
 	}
 	var got []outboxRow
 	for rows.Next() {
@@ -120,18 +121,18 @@ func TestSettlePostsTrade(t *testing.T) {
 	if bob.eventID != "T42:bob" || bob.key != "bob" {
 		t.Errorf("bob row = %+v", bob)
 	}
-	wantAlice := []settlement.Change{{Asset: "USD", Amount: "-1500"}, {Asset: "AAPL", Amount: "10"}}
-	if alice.payload.EventID != "T42:alice" || alice.payload.TradeID != "T42" ||
+	wantAlice := []messages.Change{{Asset: "USD", Amount: "-1500"}, {Asset: "AAPL", Amount: "10"}}
+	if alice.payload.Version != messages.LedgerEventVersion || alice.payload.EventID != "T42:alice" || alice.payload.TradeID != "T42" ||
 		alice.payload.AccountID != "alice" || !equalChanges(alice.payload.Changes, wantAlice) {
 		t.Errorf("alice payload = %+v", alice.payload)
 	}
-	wantBob := []settlement.Change{{Asset: "USD", Amount: "1500"}, {Asset: "AAPL", Amount: "-10"}}
+	wantBob := []messages.Change{{Asset: "USD", Amount: "1500"}, {Asset: "AAPL", Amount: "-10"}}
 	if !equalChanges(bob.payload.Changes, wantBob) {
 		t.Errorf("bob payload = %+v", bob.payload)
 	}
 }
 
-func equalChanges(a, b []settlement.Change) bool {
+func equalChanges(a, b []messages.Change) bool {
 	if len(a) != len(b) {
 		return false
 	}
@@ -228,10 +229,4 @@ func TestSettleFailureRollsBackDedupeRow(t *testing.T) {
 	}
 	requireCounts(t, pool, 1, 4, 2)
 	requireInvariants(t, pool)
-}
-
-func TestLedgerEventID(t *testing.T) {
-	if got := settlement.LedgerEventID("T42", "alice"); got != "T42:alice" {
-		t.Fatalf("LedgerEventID = %q", got)
-	}
 }

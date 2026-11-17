@@ -11,13 +11,12 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
 
+	"github.com/harshithptl/clearline/internal/env"
 	"github.com/harshithptl/clearline/internal/topics"
 )
 
@@ -29,20 +28,15 @@ func main() {
 }
 
 func run() error {
-	brokers := []string{"localhost:9092"}
-	if b := os.Getenv("CLEARLINE_KAFKA_BROKERS"); b != "" {
-		brokers = strings.Split(b, ",")
+	rf, err := env.Int("CLEARLINE_KAFKA_REPLICATION", 1)
+	if err != nil {
+		return err
 	}
-	rf := int16(1)
-	if s := os.Getenv("CLEARLINE_KAFKA_REPLICATION"); s != "" {
-		v, err := strconv.ParseInt(s, 10, 16)
-		if err != nil {
-			return fmt.Errorf("CLEARLINE_KAFKA_REPLICATION: %w", err)
-		}
-		rf = int16(v)
+	if rf < 1 || rf > 32767 {
+		return fmt.Errorf("CLEARLINE_KAFKA_REPLICATION=%d out of range", rf)
 	}
 
-	cl, err := kgo.NewClient(kgo.SeedBrokers(brokers...))
+	cl, err := kgo.NewClient(kgo.SeedBrokers(env.Brokers()...))
 	if err != nil {
 		return err
 	}
@@ -51,7 +45,7 @@ func run() error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	if err := topics.Ensure(ctx, adm, rf, topics.All...); err != nil {
+	if err := topics.Ensure(ctx, adm, int16(rf), topics.All...); err != nil {
 		return err
 	}
 
