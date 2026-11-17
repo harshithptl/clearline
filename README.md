@@ -89,6 +89,8 @@ CLEARLINE_HARNESS_SEED=7 go test ./internal/settlement -run Harness -v
 # run the services (each in its own terminal; Ctrl-C shuts down cleanly)
 go run ./services/settlement     # trades -> ledger + outbox
 go run ./services/outbox-relay   # outbox -> ledger-events
+go run ./services/balance        # ledger-events -> Valkey, GET localhost:8081/balances/{account}
+go run ./services/reconciler     # checks every 10s; -once exits 0 clean, 1 mismatch, 2 lagging
 
 # after fixing whatever sent trades to the DLQ, replay them
 go run ./cmd/dlq-replay
@@ -107,6 +109,8 @@ cmd/topics/           creates Kafka topics (SPEC 3.3)
 cmd/dlq-replay/       republishes dead-lettered trades to their original topic
 services/settlement/  trades consumer: settle, retry with backoff, DLQ, commit offsets after the DB commit
 services/outbox-relay/  publishes outbox rows to ledger-events; one active instance via an advisory lock
+services/balance/     ledger-events consumer into Valkey + read API
+services/reconciler/  periodic ledger invariants + cache-vs-ledger check
 migrations/           SQL schema migrations, embedded into Go, applied by goose
 internal/pgtest/      test helper: fresh migrated Postgres database per test
 internal/kafkatest/   test helper: unique Kafka topics and consumer groups per test
@@ -115,6 +119,9 @@ internal/ledger/      trade -> double-entry ledger rows
 internal/ledger/invariants/  SQL checks for the SPEC 4.2 ledger invariants
 internal/settlement/  Settle(): one transaction per trade, dedupe + ledger rows + outbox; the trades Consumer
 internal/outbox/      outbox relay loop
+internal/balance/     Valkey balance store (WATCH/MULTI, exact decimals, dedupe), consumer, HTTP API
+internal/reconcile/   invariant 3 with lag detection, on top of the ledger invariants
+internal/redistest/   test helper: unique Valkey key prefix per test
 internal/messages/    versioned JSON wire formats (money as decimal strings)
 internal/dlq/         dead-letter record format and replay
 internal/backoff/     exponential backoff with jitter
@@ -123,7 +130,7 @@ deploy/compose/       local Docker Compose stack: Postgres, Kafka, Valkey
 docs/decisions/       short design-decision notes
 ```
 
-Planned: more `services/` (gateway, matcher-adapter, balance, reconciler), `proto/`, `engine/` (C++ matcher + gRPC server), `deploy/helm/`, `deploy/terraform/`, `loadtest/`, `chaos/`.
+Planned: more `services/` (gateway, matcher-adapter), `proto/`, `engine/` (C++ matcher + gRPC server), `deploy/helm/`, `deploy/terraform/`, `loadtest/`, `chaos/`.
 
 ## Roadmap
 
@@ -147,7 +154,7 @@ Progress:
 - [x] Phase 2 infra: Kafka (KRaft) + Valkey in compose, goose migrations, topic creation
 - [x] Settlement service (Kafka consumer, retries, DLQ, replay tool)
 - [x] Outbox relay (single active leader, at-least-once)
-- [ ] Balance service + reconciler
+- [x] Balance service + reconciler (all 5 invariants checked)
 - [ ] C++ engine over gRPC + matcher adapter
 - [ ] Gateway
 - [ ] End-to-end: one order flows into the ledger

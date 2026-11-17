@@ -36,6 +36,9 @@ func Brokers() []string {
 // RedisAddr is CLEARLINE_REDIS_ADDR.
 func RedisAddr() string { return String("CLEARLINE_REDIS_ADDR", DefaultRedisAddr) }
 
+// RedisPrefix is CLEARLINE_REDIS_PREFIX, the key prefix for balances.
+func RedisPrefix() string { return String("CLEARLINE_REDIS_PREFIX", "clearline:") }
+
 // Int parses an integer variable, or returns def when unset.
 func Int(key string, def int) (int, error) {
 	v := os.Getenv(key)
