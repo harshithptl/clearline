@@ -1,3 +1,4 @@
+-- +goose Up
 -- 0003_account_id_no_colon: make per-account ledger event IDs unambiguous.
 --
 -- Ledger event IDs are "<trade_id>:<account_id>". If account IDs could

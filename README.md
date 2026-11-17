@@ -73,11 +73,15 @@ Checked by tests now and by the reconciler later:
 Requirements: Go 1.27+, Docker.
 
 ```sh
-# start Postgres
+# start Postgres, Kafka (KRaft, single broker) and Valkey
 docker compose -f deploy/compose/docker-compose.yml up -d --wait
 
-# run all tests (each test gets its own throwaway database)
-go test ./...
+# apply schema migrations and create Kafka topics (both idempotent)
+go run ./cmd/migrate
+go run ./cmd/topics
+
+# run all tests (each test gets its own throwaway database and Kafka topics)
+go test ./... -race
 
 # run the settlement harness with a different random seed
 CLEARLINE_HARNESS_SEED=7 go test ./internal/settlement -run Harness -v
@@ -89,12 +93,17 @@ Tests connect to `postgres://clearline:clearline@127.0.0.1:5432/clearline?sslmod
 
 ```
 docs/SPEC.md          full design spec: requirements, architecture, failure handling, targets
-migrations/           SQL schema migrations, embedded into Go and applied in order
+cmd/migrate/          applies pending migrations (goose)
+cmd/topics/           creates Kafka topics (SPEC 3.3)
+migrations/           SQL schema migrations, embedded into Go, applied by goose
 internal/pgtest/      test helper: fresh migrated Postgres database per test
+internal/kafkatest/   test helper: unique Kafka topics and consumer groups per test
+internal/topics/      topic names, partition counts, idempotent creation
 internal/ledger/      trade -> double-entry ledger rows
 internal/ledger/invariants/  SQL checks for the SPEC 4.2 ledger invariants
 internal/settlement/  Settle(): one transaction per trade, dedupe + ledger rows + outbox
-deploy/compose/       local Docker Compose stack
+deploy/compose/       local Docker Compose stack: Postgres, Kafka, Valkey
+docs/decisions/       short design-decision notes
 ```
 
 Planned: `services/` (gateway, matcher-adapter, settlement, outbox-relay, balance, reconciler), `proto/`, `engine/` (C++ matcher + gRPC server), `deploy/helm/`, `deploy/terraform/`, `loadtest/`, `chaos/`.
@@ -118,7 +127,13 @@ Progress:
 - [x] Ledger entry generation (exact decimals, no silent rounding)
 - [x] Settlement transaction with dedupe
 - [x] Randomized duplicate-delivery test harness (concurrent workers, checked against an independent oracle)
-- [ ] Phase 2: Kafka pipeline
+- [x] Phase 2 infra: Kafka (KRaft) + Valkey in compose, goose migrations, topic creation
+- [ ] Settlement service (Kafka consumer, retries, DLQ)
+- [ ] Outbox relay
+- [ ] Balance service + reconciler
+- [ ] C++ engine over gRPC + matcher adapter
+- [ ] Gateway
+- [ ] End-to-end: one order flows into the ledger
 
 ## Design
 

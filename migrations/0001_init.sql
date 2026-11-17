@@ -1,3 +1,4 @@
+-- +goose Up
 -- 0001_init: core ledger schema.
 -- Money is NUMERIC, never float. The ledger is append-only: corrections are
 -- new reversing entries, so UPDATE, DELETE and TRUNCATE are rejected below.
@@ -21,6 +22,7 @@ CREATE INDEX ledger_entries_account_asset_idx ON ledger_entries (account_id, ass
 CREATE INDEX ledger_entries_trade_idx ON ledger_entries (trade_id);
 
 -- Enforce append-only in the database, not just by convention.
+-- +goose StatementBegin
 CREATE FUNCTION ledger_entries_append_only() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
@@ -28,6 +30,7 @@ BEGIN
         USING ERRCODE = 'restrict_violation';
 END;
 $$;
+-- +goose StatementEnd
 
 CREATE TRIGGER ledger_entries_no_update_delete
     BEFORE UPDATE OR DELETE ON ledger_entries

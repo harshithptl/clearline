@@ -17,5 +17,60 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+  # Single Kafka broker in KRaft mode (no ZooKeeper): it is both broker and controller.
+  # Two client listeners:
+  #   INTERNAL kafka:19092     for other containers (services, later)
+  #   EXTERNAL localhost:9092  for tests and tools on the host
+  # With one broker, replication factor and min.insync.replicas are 1, so acks=all
+  # means "the one broker has it". See docs/decisions/0001-single-broker-durability.md.
+  kafka:
+    image: apache/kafka:4.3.2
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://:19092,EXTERNAL://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:19092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      # Topics are created explicitly by cmd/topics, never by a typo in a producer.
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_MIN_INSYNC_REPLICAS: 1
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 3s
+      timeout: 10s
+      retries: 30
+      start_period: 10s
+    ports:
+      - "9092:9092"
+    volumes:
+      - kafkadata:/var/lib/kafka/data
+
+  # Valkey: open-source Redis fork, wire compatible. Used for idempotency keys
+  # (gateway) and the balance cache (balance service).
+  # appendfsync everysec: the cache is rebuildable from the ledger, so losing up
+  # to 1s of cache writes on a crash is acceptable; the ledger is the source of truth.
+  valkey:
+    image: valkey/valkey:9.1.3-alpine
+    command: ["valkey-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    ports:
+      - "6379:6379"
+    volumes:
+      - valkeydata:/data
+
 volumes:
   pgdata:
+  kafkadata:
+  valkeydata:
