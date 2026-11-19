@@ -209,7 +209,7 @@ Progress:
 - [x] Gateway (two-layer idempotency, decision 0003)
 - [x] End-to-end: one order flows into the ledger (test/e2e, runs in CI)
 - [x] CI, linting, Dependabot, repo standards
-- [x] Load generator and first baseline benchmark ([report](docs/benchmarks/README.md))
+- [x] Load generator and benchmark ladder: 100 to 2000 trades/s sustained via batching and per-partition concurrency ([report](docs/benchmarks/README.md))
 - [x] Prometheus metrics on every service, in-pipeline latency measurement, alert rules with tests ([observability](docs/observability.md))
 - [x] Dashboard: live balances, trade tape over SSE, reconciler status, order form ([decision 0004](docs/decisions/0004-dashboard.md))
 

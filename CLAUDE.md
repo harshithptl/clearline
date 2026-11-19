@@ -5,7 +5,7 @@ Event-driven trade settlement and ledger engine. Go services, Kafka, Postgres, R
 @docs/SPEC.md
 
 ## Current status
-- Phase 1 done (schema, invariants, BuildEntries, Settle, duplicate-delivery harness). Phase 2 done (Kafka pipeline, outbox relay, balance, reconciler, C++ engine + adapter, gateway, compose stack, e2e test in CI). CI + repo standards done. Dashboard (web/) done. Phase 3 in progress: Prometheus metrics + alerts done (docs/observability.md). Load generator done. Clean benchmark ladder in docs/benchmarks (baseline 100 trades/s sustained; + balance batching 731). Settlement batching next PR; then OpenTelemetry, Grafana, chaos tests. See SPEC section 11.
+- Phase 1 done (schema, invariants, BuildEntries, Settle, duplicate-delivery harness). Phase 2 done (Kafka pipeline, outbox relay, balance, reconciler, C++ engine + adapter, gateway, compose stack, e2e test in CI). CI + repo standards done. Dashboard (web/) done. Phase 3 in progress: Prometheus metrics + alerts done (docs/observability.md). Load generator done. Clean benchmark ladder in docs/benchmarks: baseline 100 trades/s sustained; + balance batching 731; + settlement batching 2000 (highest offered). Next: repeated runs for variance, then OpenTelemetry, Grafana, chaos tests. See SPEC section 11.
 - Update this line as phases complete.
 
 ## Hard rules for this codebase
