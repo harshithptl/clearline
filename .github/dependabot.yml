@@ -38,10 +38,10 @@ updates:
     ignore:
       # typescript-eslint supports TypeScript < 6.1; revisit when it adds 7.
       - dependency-name: typescript
-        update-types: [version-update:semver-major]
+        update-types: ["version-update:semver-major"]
       # Types track the Node major we build and test on (web/.nvmrc: 24).
       - dependency-name: "@types/node"
-        update-types: [version-update:semver-major]
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: docker
     directories: [/web, /deploy/docker]
@@ -50,7 +50,7 @@ updates:
     ignore:
       # Node majors move with web/.nvmrc and CI, deliberately.
       - dependency-name: node
-        update-types: [version-update:semver-major]
+        update-types: ["version-update:semver-major"]
       # nginx odd minors (1.31, 1.33, ...) are the mainline branch; track stable.
       - dependency-name: nginxinc/nginx-unprivileged
         versions: ["1.31.x", "1.33.x", "1.35.x"]
