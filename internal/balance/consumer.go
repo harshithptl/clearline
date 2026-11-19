@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -29,6 +30,7 @@ type Consumer struct {
 	stats   ConsumerStats
 	// Set by Instrument; nil records nothing.
 	applyDuration prometheus.Histogram
+	batchSize     prometheus.Histogram
 	freshness     prometheus.Histogram
 
 	// onApplied, if set, is called with each newly applied event (not
@@ -77,9 +79,16 @@ func NewConsumer(cl *kgo.Client, store *Store, log *slog.Logger) *Consumer {
 func (c *Consumer) Stats() *ConsumerStats { return &c.stats }
 
 // Run consumes until ctx is canceled, then returns nil.
+//
+// Each fetch is split by partition and the partitions are applied
+// concurrently, one goroutine each. That keeps every account's events in
+// order (ledger-events is keyed by account, so an account lives on one
+// partition) while partitions, which share no accounts, proceed in
+// parallel. Within a partition the records go to Valkey as one batch.
+// Offsets are committed after every partition's batch has been applied.
 func (c *Consumer) Run(ctx context.Context) error {
 	for {
-		fetches := c.cl.PollRecords(ctx, 500)
+		fetches := c.cl.PollRecords(ctx, 2000)
 		if fetches.IsClientClosed() {
 			return errors.New("balance consumer: client closed")
 		}
@@ -88,15 +97,30 @@ func (c *Consumer) Run(ctx context.Context) error {
 			return nil
 		}
 		fetches.EachError(c.logFetchError)
-		recs := fetches.Records()
-		done := 0
-		for _, r := range recs {
-			if err := c.handle(ctx, r); err != nil {
-				break // shutdown
+
+		var parts [][]*kgo.Record
+		fetches.EachPartition(func(p kgo.FetchTopicPartition) {
+			if len(p.Records) > 0 {
+				parts = append(parts, p.Records)
 			}
-			done++
+		})
+		done := make([][]*kgo.Record, len(parts))
+		var wg sync.WaitGroup
+		for i, recs := range parts {
+			wg.Add(1)
+			go func(i int, recs []*kgo.Record) {
+				defer wg.Done()
+				if c.handleBatch(ctx, recs) == nil {
+					done[i] = recs
+				}
+			}(i, recs)
 		}
-		c.commit(recs[:done])
+		wg.Wait()
+		var ok []*kgo.Record
+		for _, d := range done {
+			ok = append(ok, d...)
+		}
+		c.commit(ok)
 		c.cl.AllowRebalance()
 		if ctx.Err() != nil {
 			return nil
@@ -121,54 +145,68 @@ func (c *Consumer) commit(recs []*kgo.Record) {
 	c.stats.Committed.Add(int64(len(recs)))
 }
 
-// observe records the latencies of a newly applied event.
-func (c *Consumer) observe(r *kgo.Record, start time.Time) {
+// observe records the latency of one newly applied event's record.
+func (c *Consumer) observe(r *kgo.Record, now time.Time) {
 	if c.freshness == nil {
 		return
 	}
-	now := time.Now()
-	c.applyDuration.Observe(now.Sub(start).Seconds())
 	if d, ok := metrics.Since(messages.HeaderTime(r.Headers, messages.HeaderCommitTime), now); ok {
 		c.freshness.Observe(d)
 	}
 }
 
-// handle applies one record. It returns an error only on shutdown.
-func (c *Consumer) handle(ctx context.Context, r *kgo.Record) error {
-	ev, err := messages.DecodeLedgerEvent(r.Value)
-	if err == nil && ev.AccountID != string(r.Key) {
-		err = errors.New("account_id does not match record key")
+// handleBatch applies one partition's records, in order, as one batch. It
+// returns an error only on shutdown, in which case nothing may be committed.
+func (c *Consumer) handleBatch(ctx context.Context, recs []*kgo.Record) error {
+	events := make([]messages.LedgerEvent, 0, len(recs))
+	kept := make([]*kgo.Record, 0, len(recs))
+	for _, r := range recs {
+		ev, err := messages.DecodeLedgerEvent(r.Value)
+		if err == nil && ev.AccountID != string(r.Key) {
+			err = errors.New("account_id does not match record key")
+		}
+		if err != nil {
+			c.stats.Malformed.Add(1)
+			c.log.Error("skipping malformed ledger event", "partition", r.Partition, "offset", r.Offset, "err", err)
+			continue
+		}
+		events = append(events, ev)
+		kept = append(kept, r)
 	}
-	if err != nil {
-		c.stats.Malformed.Add(1)
-		c.log.Error("skipping malformed ledger event", "partition", r.Partition, "offset", r.Offset, "err", err)
+	if len(events) == 0 {
 		return nil
 	}
 	for attempt := 1; ; attempt++ {
 		start := time.Now()
-		applied, err := c.store.Apply(ctx, ev)
+		results, err := c.store.ApplyBatch(ctx, events)
 		if err == nil {
-			if applied {
-				c.stats.Applied.Add(1)
-				c.observe(r, start)
-				if c.onApplied != nil {
-					c.onApplied(ev)
+			now := time.Now()
+			if c.applyDuration != nil {
+				c.applyDuration.Observe(now.Sub(start).Seconds())
+				c.batchSize.Observe(float64(len(events)))
+			}
+			for i, res := range results {
+				switch res {
+				case Applied:
+					c.stats.Applied.Add(1)
+					c.observe(kept[i], now)
+					if c.onApplied != nil {
+						c.onApplied(events[i])
+					}
+				case Duplicate:
+					c.stats.Duplicates.Add(1)
+				case Malformed:
+					c.stats.Malformed.Add(1)
+					c.log.Error("skipping malformed ledger event", "event_id", events[i].EventID)
 				}
-			} else {
-				c.stats.Duplicates.Add(1)
 			}
 			return nil
 		}
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if errors.Is(err, messages.ErrMalformed) {
-			c.stats.Malformed.Add(1)
-			c.log.Error("skipping malformed ledger event", "event_id", ev.EventID, "err", err)
-			return nil
-		}
 		c.stats.Retries.Add(1)
-		c.log.Warn("apply failed, retrying", "event_id", ev.EventID, "attempt", attempt, "err", err)
+		c.log.Warn("apply batch failed, retrying", "events", len(events), "attempt", attempt, "err", err)
 		if err := backoff.Sleep(ctx, c.backoff.Delay(attempt)); err != nil {
 			return err
 		}
