@@ -360,3 +360,19 @@ func TestOrderIDIsStableAndDistinct(t *testing.T) {
 		t.Fatalf("order id %q", id)
 	}
 }
+
+func TestSymbols(t *testing.T) {
+	e := newEnv(t)
+	resp, err := e.srv.Client().Get(e.srv.URL + "/symbols")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	// AAPL: reference 150, 20000 ticks of 0.01 each side -> 150 - 200 is
+	// negative, so the floor is one tick.
+	want := `[{"symbol":"AAPL","quote_asset":"USD","tick_size":"0.01","min_price":"0.01","max_price":"350"}]`
+	if resp.StatusCode != http.StatusOK || strings.TrimSpace(string(b)) != want {
+		t.Fatalf("GET /symbols = %d %s", resp.StatusCode, b)
+	}
+}

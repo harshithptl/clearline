@@ -8,6 +8,8 @@ The matching engine is the fast part: it matches an order in microseconds. The h
 
 > **Status:** Phases 1 and 2 are complete: the full pipeline runs in Docker Compose and an automated end-to-end test drives an order from REST into the ledger on every CI run. Phase 3 (observability, load and chaos tests) is next. See [Roadmap](#roadmap). No performance numbers are published yet; every number will come with hardware, settings, and a script to reproduce it.
 
+![Clearline dashboard: live balances, order form, trade tape](docs/images/dashboard.png)
+
 ## How a trade flows
 
 ```mermaid
@@ -77,8 +79,9 @@ Requirements: Go 1.27.4+, Docker. `make help` lists every shortcut.
 The quickest way to see it work:
 
 ```sh
-make up-all   # infrastructure + all six services in containers (gateway :8080, balance :8081)
+make up-all   # infrastructure + all six services + dashboard (http://localhost:3000)
 make e2e      # place orders through the gateway, check ledger, outbox, balances, reconciler
+make web-e2e  # the same through a real browser (Playwright, needs `make web-install` once)
 make down     # stop everything (data kept; make reset deletes it)
 ```
 
@@ -165,6 +168,7 @@ internal/backoff/     exponential backoff with jitter
 internal/env/         service configuration from environment variables
 deploy/compose/       Docker Compose: Postgres, Kafka, Valkey, engine; profile "app" adds every service
 deploy/docker/        one multi-arch distroless image holding every Go binary
+web/                  React + TypeScript dashboard (Vite, Tailwind, Radix, TanStack Query), see web/README.md
 test/e2e/             end-to-end test against the running stack (build tag e2e, make e2e)
 cmd/healthcheck/      tiny HTTP probe for compose healthchecks (the images have no shell)
 docs/decisions/       short design-decision notes
@@ -198,6 +202,8 @@ Progress:
 - [x] C++ engine over gRPC + matcher adapter (replay-based recovery, decision 0002)
 - [x] Gateway (two-layer idempotency, decision 0003)
 - [x] End-to-end: one order flows into the ledger (test/e2e, runs in CI)
+- [x] CI, linting, Dependabot, repo standards
+- [x] Dashboard: live balances, trade tape over SSE, reconciler status, order form ([decision 0004](docs/decisions/0004-dashboard.md))
 
 ## Design
 

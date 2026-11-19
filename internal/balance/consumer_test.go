@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -49,6 +50,8 @@ func TestConsumerAppliesOnceAndServes(t *testing.T) {
 
 	cl := kafkatest.NewClient(t, balance.ConsumerClientOpts(kafkatest.GroupID(t), topic)...)
 	c := balance.NewConsumer(cl, s, slog.New(slog.DiscardHandler))
+	var notified atomic.Int64
+	c.OnApplied(func(messages.LedgerEvent) { notified.Add(1) })
 	runCtx, cancel := context.WithCancel(ctx)
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -63,10 +66,13 @@ func TestConsumerAppliesOnceAndServes(t *testing.T) {
 		t.Fatalf("applied=%d duplicates=%d malformed=%d, want 40 40 1",
 			st.Applied.Load(), st.Duplicates.Load(), st.Malformed.Load())
 	}
+	if notified.Load() != 40 {
+		t.Fatalf("OnApplied called %d times, want 40 (duplicates must not notify)", notified.Load())
+	}
 	requireBalance(t, s, "alice", "USD", "-50", 20)
 	requireBalance(t, s, "bob", "AAPL", "-20", 20)
 
-	srv := httptest.NewServer(balance.Handler(s))
+	srv := httptest.NewServer(balance.Handler(s, nil))
 	defer srv.Close()
 	resp, err := http.Get(srv.URL + "/balances/alice")
 	if err != nil {

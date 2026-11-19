@@ -1,7 +1,9 @@
 // Command balance consumes ledger-events into Valkey and serves balances
 // (SPEC F6):
 //
+//	GET /balances
 //	GET /balances/{account}
+//	GET /events     live ledger events (Server-Sent Events)
 //	GET /healthz
 //
 // Environment:
@@ -55,10 +57,12 @@ func run() error {
 	}
 	defer cl.Close()
 	cons := balance.NewConsumer(cl, store, nil)
+	hub := balance.NewHub(256)
+	cons.OnApplied(hub.Publish)
 
 	srv := &http.Server{
 		Addr:              env.String("CLEARLINE_BALANCE_ADDR", ":8081"),
-		Handler:           balance.Handler(store),
+		Handler:           balance.Handler(store, hub),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	httpErr := make(chan error, 1)

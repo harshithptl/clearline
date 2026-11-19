@@ -25,7 +25,14 @@ type Consumer struct {
 	backoff backoff.Policy
 	log     *slog.Logger
 	stats   ConsumerStats
+	// onApplied, if set, is called with each newly applied event (not
+	// duplicates), after Valkey has it. Must not block.
+	onApplied func(messages.LedgerEvent)
 }
+
+// OnApplied registers f to be called with each newly applied event, for
+// example Hub.Publish. Call before Run. f must not block.
+func (c *Consumer) OnApplied(f func(messages.LedgerEvent)) { c.onApplied = f }
 
 // ConsumerStats are running counters, safe to read while the consumer runs.
 type ConsumerStats struct {
@@ -124,6 +131,9 @@ func (c *Consumer) handle(ctx context.Context, r *kgo.Record) error {
 		if err == nil {
 			if applied {
 				c.stats.Applied.Add(1)
+				if c.onApplied != nil {
+					c.onApplied(ev)
+				}
 			} else {
 				c.stats.Duplicates.Add(1)
 			}

@@ -41,23 +41,31 @@ func TestEnsureAppliesConfigs(t *testing.T) {
 	if err := topics.Ensure(ctx, adm, 1, spec); err != nil {
 		t.Fatal(err)
 	}
-	cfgs, err := adm.DescribeTopicConfigs(ctx, name)
+	// The broker applies config changes from the KRaft metadata log
+	// asynchronously, so a describe right after the alter can still see the
+	// old value under load. Wait for it rather than read once.
+	kafkatest.Eventually(t, 10*time.Second, "retention.ms = -1", func() bool {
+		return retention(ctx, t, adm, name) == topics.Forever
+	})
+}
+
+func retention(ctx context.Context, t *testing.T, adm *kadm.Client, topic string) string {
+	t.Helper()
+	cfgs, err := adm.DescribeTopicConfigs(ctx, topic)
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := cfgs.On(name, nil)
+	c, err := cfgs.On(topic, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, kv := range c.Configs {
 		if kv.Key == "retention.ms" {
-			if kv.Value == nil || *kv.Value != topics.Forever {
-				t.Fatalf("retention.ms = %v, want %s", kv.MaybeValue(), topics.Forever)
-			}
-			return
+			return kv.MaybeValue()
 		}
 	}
 	t.Fatal("retention.ms not described")
+	return ""
 }
 
 func TestOrdersKeptForever(t *testing.T) {

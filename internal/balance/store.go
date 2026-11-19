@@ -30,6 +30,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/shopspring/decimal"
@@ -121,6 +123,26 @@ func parseStored(v any) (decimal.Decimal, error) {
 		return decimal.NewFromString(x)
 	}
 	return decimal.Decimal{}, fmt.Errorf("unexpected stored value %T", v)
+}
+
+// Accounts returns up to limit account ids that have cached balances,
+// sorted. It SCANs (incrementally, never blocking Valkey like KEYS), so it is
+// meant for dashboards and tools, not the hot path.
+func (s *Store) Accounts(ctx context.Context, limit int) ([]string, error) {
+	var out []string
+	pattern := s.prefix + "{*}:bal"
+	iter := s.rdb.Scan(ctx, 0, pattern, 500).Iterator()
+	for iter.Next(ctx) && len(out) < limit {
+		k := strings.TrimPrefix(iter.Val(), s.prefix+"{")
+		if acct, ok := strings.CutSuffix(k, "}:bal"); ok && acct != "" {
+			out = append(out, acct)
+		}
+	}
+	if err := iter.Err(); err != nil {
+		return nil, fmt.Errorf("list accounts: %w", err)
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 // Snapshot is one account's cached state, read atomically.

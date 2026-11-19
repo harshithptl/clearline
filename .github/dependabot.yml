@@ -27,3 +27,16 @@ updates:
     directories: [/deploy/compose]
     schedule:
       interval: weekly
+
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+    groups:
+      npm-minor:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directories: [/web, /deploy/docker]
+    schedule:
+      interval: weekly
