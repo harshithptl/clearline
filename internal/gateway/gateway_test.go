@@ -348,7 +348,8 @@ func TestValkeyDownIs503(t *testing.T) {
 }
 
 func TestOrderIDIsStableAndDistinct(t *testing.T) {
-	if gateway.OrderID("alice", "k") != gateway.OrderID("alice", "k") {
+	first, second := gateway.OrderID("alice", "k"), gateway.OrderID("alice", "k")
+	if first != second {
 		t.Fatal("not stable")
 	}
 	// Without a separator, ("ab","c") and ("a","bc") would hash the same input.

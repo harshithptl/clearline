@@ -2,6 +2,7 @@ package backoff_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -32,7 +33,7 @@ func TestDelayGrowsAndCaps(t *testing.T) {
 func TestSleepCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if err := backoff.Sleep(ctx, time.Hour); err != context.Canceled {
+	if err := backoff.Sleep(ctx, time.Hour); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Sleep = %v, want Canceled", err)
 	}
 }

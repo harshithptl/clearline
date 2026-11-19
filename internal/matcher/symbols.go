@@ -120,7 +120,7 @@ func (s SymbolSpec) CheckOrder(o messages.ParsedOrder) (priceTicks int64, qty ui
 		return 0, 0, fmt.Errorf("price %s outside the book's range %s to %s", o.Price,
 			s.price(ref-int64(s.TicksEachSide)), s.price(ref+int64(s.TicksEachSide)))
 	}
-	return ticks, uint32(o.Quantity.IntPart()), nil
+	return ticks, uint32(o.Quantity.IntPart()), nil //nolint:gosec // G115: bounded to 1..MaxUint32 above
 }
 
 // errPrice: a price that is not a positive whole number of ticks.

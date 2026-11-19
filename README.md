@@ -1,5 +1,7 @@
 # Clearline
 
+[![ci](https://github.com/harshithptl/clearline/actions/workflows/ci.yml/badge.svg)](https://github.com/harshithptl/clearline/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 An event-driven trade settlement and double-entry ledger engine. Go services connected by Kafka, a Postgres ledger, a Redis balance cache, and a C++ matching engine called over gRPC.
 
 The matching engine is the fast part: it matches an order in microseconds. The hard part is everything after a match. Every trade has to be posted to the ledger **exactly once**, never lost, with the books provably balanced, even when messages are redelivered, processes crash mid-write, or brokers restart. Clearline is built around that problem.
@@ -70,7 +72,7 @@ Checked by tests now and by the reconciler later:
 
 ## Running locally
 
-Requirements: Go 1.27+, Docker.
+Requirements: Go 1.27.4+, Docker. `make help` lists shortcuts for everything below (`make init`, `make test`, `make lint`, `make check` runs what CI runs).
 
 ```sh
 # start Postgres, Kafka (KRaft, single broker), Valkey and the C++ engine (built in Docker)

@@ -20,7 +20,7 @@ import (
 	"github.com/harshithptl/clearline/migrations"
 )
 
-const defaultURL = "postgres://clearline:clearline@127.0.0.1:5432/clearline?sslmode=disable"
+const defaultURL = "postgres://clearline:clearline@127.0.0.1:5432/clearline?sslmode=disable" //nolint:gosec // G101: local compose dev credentials, not a secret
 
 // NewDB returns a single connection to a new, fully migrated database that is
 // dropped on test cleanup. Not safe for concurrent use; see NewPool.
@@ -37,7 +37,7 @@ func NewDB(t *testing.T) *pgx.Conn {
 		t.Fatalf("pgtest: connect to test database: %v", err)
 	}
 	// Cleanups run last-in first-out, so this closes before the drop.
-	t.Cleanup(func() { conn.Close(context.Background()) })
+	t.Cleanup(func() { _ = conn.Close(context.Background()) })
 	return conn
 }
 
@@ -77,7 +77,7 @@ func create(t *testing.T) (string, string) {
 	}
 	name := "clearline_test_" + randomSuffix(t)
 	if _, err := admin.Exec(ctx, "CREATE DATABASE "+name); err != nil {
-		admin.Close(ctx)
+		_ = admin.Close(ctx)
 		t.Fatalf("pgtest: create database: %v", err)
 	}
 	t.Cleanup(func() {
@@ -86,7 +86,7 @@ func create(t *testing.T) (string, string) {
 		if _, err := admin.Exec(cctx, "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)"); err != nil {
 			t.Errorf("pgtest: drop database %s: %v", name, err)
 		}
-		admin.Close(cctx)
+		_ = admin.Close(cctx)
 	})
 
 	cfg, err := pgx.ParseConfig(adminURL)

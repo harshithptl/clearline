@@ -9,7 +9,7 @@ cd "$(dirname "$0")/.."
 PROTOC_GEN_GO=v1.36.12
 PROTOC_GEN_GO_GRPC=v1.6.2
 
-docker run --rm -v "$PWD":/work -w /work golang:1.27.3-trixie bash -c "
+docker run --rm -v "$PWD":/work -w /work golang:1.27.4-trixie bash -c "
   set -euo pipefail
   apt-get update -qq >/dev/null
   DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends protobuf-compiler >/dev/null
