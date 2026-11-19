@@ -105,7 +105,7 @@ Tests connect to `postgres://clearline:clearline@127.0.0.1:5432/clearline?sslmod
 
 ```
 docs/SPEC.md          full design spec: requirements, architecture, failure handling, targets
-engine/               C++ order book (from LowLatencyBuffer, spsc_buffer branch) + gRPC server, gtest suite, Dockerfile
+engine/               C++ order book (from LowLatencyBuffer) + gRPC server, gtest suite, Dockerfile
 proto/                gRPC contract for the engine (integer tick prices, sessions)
 gen/                  generated Go code from proto/ (scripts/gen-proto.sh, runs protoc in Docker)
 services/matcher-adapter/  consumes orders, calls the engine, publishes trades; rebuilds books by replay
