@@ -2,8 +2,17 @@
 
 The C++ matching engine, served over gRPC.
 
-`include/llb/` and `src/` are copied from LowLatencyBuffer at commit `1c5ad00`
-("feat: matching engine on the consumer thread"). Changes from the original:
+`include/llb/` and `src/` are copied from
+[LowLatencyBuffer](https://github.com/harshithptl/LowLatencyBuffer) at commit
+[`1c5ad00`](https://github.com/harshithptl/LowLatencyBuffer/commit/1c5ad00)
+("feat: matching engine on the consumer thread"), originally on its `spsc_buffer` branch.
+
+Its README has the benchmark: 5.2 µs P50 submit-to-book through an SPSC ring and
+1.1 to 1.6 µs per book operation, on an Apple M4 under macOS with `-O3 -ffast-math`.
+Those numbers do not carry over here. This build uses different flags (below), runs in
+Docker on Linux, and sits behind gRPC, so Clearline measures its own in Phase 3.
+
+Changes from the original:
 
 | Change | Why |
 |---|---|

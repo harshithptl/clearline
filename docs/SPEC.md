@@ -120,7 +120,7 @@ Plain-text version:
 |---|---|---|
 | order-gateway | Go | REST API, validation, idempotency check in Redis, publish to `orders` |
 | matcher-adapter | Go | Consume `orders`, call C++ engine over gRPC, publish fills to `trades` |
-| matching engine | C++ | Existing engine (price-time priority, O(1) insert/cancel/lookup, ~5.2µs P50) |
+| matching engine | C++ | Existing engine (price-time priority, O(1) insert/cancel/lookup, 5.2 µs P50 submit-to-book through an SPSC ring, ~1.1 to 1.6 µs per book op, Apple M4 macOS; see LowLatencyBuffer README) |
 | settlement-service | Go | Consume `trades`, write ledger rows + one outbox row per account touched in one transaction, dedupe by `event_id` |
 | outbox-relay | Go | Publish unsent outbox rows to `ledger-events`, mark them sent |
 | balance-service | Go | Consume `ledger-events`, update Redis balances (deduped), serve read API |
@@ -273,7 +273,7 @@ These are initial goals to be measured and adjusted, not guarantees.
 gateway: validate + Redis idempotency check      ~0.5 ms
 Kafka produce (orders), durable ack              ~2-5 ms
 adapter consumes, gRPC call to C++ matcher       ~0.5-1 ms
-  inside the engine: matching                    ~0.005 ms (5.2 µs)
+  inside the engine: matching                    ~0.001-0.002 ms (book op, M4)
 Kafka produce (trades), durable ack              ~2-5 ms
 settlement: DB transaction + commit              ~2-10 ms (disk flush dominates)
 ------------------------------------------------------------
