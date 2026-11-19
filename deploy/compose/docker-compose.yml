@@ -10,9 +10,9 @@ x-app: &app
     CLEARLINE_KAFKA_BROKERS: kafka:19092
     CLEARLINE_REDIS_ADDR: valkey:6379
     CLEARLINE_MATCHER_ADDR: engine:50051
-    # Gateway and matcher adapter must agree on symbols. E2E is a book used
-    # only by test/e2e, so its orders never meet manual ones.
-    CLEARLINE_SYMBOLS: AAPL:USD:0.01:150,MSFT:USD:0.01:400,TSLA:USD:0.01:250,NVDA:USD:0.01:500,E2E:USD:0.01:100
+    # Gateway and matcher adapter must agree on symbols. E2E and WEB are books
+    # used only by test/e2e and web/e2e, so their orders never meet manual ones.
+    CLEARLINE_SYMBOLS: AAPL:USD:0.01:150,MSFT:USD:0.01:400,TSLA:USD:0.01:250,NVDA:USD:0.01:500,E2E:USD:0.01:100,WEB:USD:0.01:50
 
 x-after-init: &after-init
   migrate: {condition: service_completed_successfully}
@@ -178,7 +178,32 @@ services:
   reconciler:
     <<: *app
     command: ["reconciler"]
+    ports: ["8082:8082"]
+    healthcheck:
+      test: ["CMD", "healthcheck", "http://127.0.0.1:8082/healthz"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
     depends_on: *after-init
+
+  # Dashboard (web/): static React build behind nginx, which also proxies
+  # /api/* to the services. Open http://localhost:3000.
+  web:
+    image: clearline-web:dev
+    build:
+      context: ../../web
+    profiles: [app]
+    restart: unless-stopped
+    ports: ["3000:8080"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    depends_on:
+      gateway: {condition: service_healthy}
+      balance: {condition: service_healthy}
+      reconciler: {condition: service_healthy}
 
 volumes:
   pgdata:

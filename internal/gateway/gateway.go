@@ -1,6 +1,7 @@
 // Package gateway is the order gateway (SPEC F1, 3.2): a REST endpoint that
 // validates orders and publishes them to the orders topic.
 //
+//	GET  /symbols  tradable symbols with tick size and price range
 //	POST /orders   Idempotency-Key: <client chosen, 1-255 printable ASCII>
 //	{"account_id":"alice","symbol":"AAPL","side":"buy","quantity":"10","price":"150.25"}
 //
@@ -34,6 +35,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -122,6 +124,7 @@ func ProducerClientOpts(timeout time.Duration) []kgo.Opt {
 func (g *Gateway) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /orders", g.postOrder)
+	mux.HandleFunc("GET /symbols", g.listSymbols)
 	mux.HandleFunc("GET /healthz", healthz)
 	return mux
 }
@@ -129,6 +132,39 @@ func (g *Gateway) Handler() http.Handler {
 func healthz(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.WriteString(w, "ok\n")
+}
+
+// SymbolInfo is one entry of GET /symbols: what an order for the symbol must
+// satisfy. Prices are decimal strings.
+type SymbolInfo struct {
+	Symbol     string `json:"symbol"`
+	QuoteAsset string `json:"quote_asset"`
+	TickSize   string `json:"tick_size"`
+	MinPrice   string `json:"min_price"`
+	MaxPrice   string `json:"max_price"`
+}
+
+// listSymbols serves GET /symbols, sorted by symbol.
+func (g *Gateway) listSymbols(w http.ResponseWriter, _ *http.Request) {
+	out := make([]SymbolInfo, 0, len(g.cfg.Symbols))
+	for _, s := range g.cfg.Symbols {
+		span := s.TickSize.Mul(decimal.NewFromInt32(s.TicksEachSide))
+		lo := s.ReferencePrice.Sub(span)
+		if !lo.GreaterThan(decimal.Zero) {
+			lo = s.TickSize // prices must be positive
+		}
+		out = append(out, SymbolInfo{
+			Symbol: s.Symbol, QuoteAsset: s.QuoteAsset, TickSize: s.TickSize.String(),
+			MinPrice: lo.String(), MaxPrice: s.ReferencePrice.Add(span).String(),
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Symbol < out[j].Symbol })
+	b, err := json.Marshal(out)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, b)
 }
 
 // OrderRequest is the POST /orders body. Numbers are decimal strings, never

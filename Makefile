@@ -2,7 +2,7 @@ COMPOSE  := docker compose -f deploy/compose/docker-compose.yml
 GOLANGCI := v2.15.0
 
 .DEFAULT_GOAL := help
-.PHONY: help up up-all down reset migrate topics init test e2e lint vuln engine-test proto check
+.PHONY: help up up-all down reset migrate topics init test e2e lint vuln engine-test proto check web-install web-dev web-check web-e2e
 
 help: ## list targets
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -47,4 +47,16 @@ engine-test: ## build the C++ engine and run its gtest suite
 proto: ## regenerate Go gRPC code into gen/
 	scripts/gen-proto.sh
 
-check: lint vuln test engine-test ## everything CI runs except e2e (make up-all && make e2e)
+web-install: ## install dashboard dependencies (web/, Node 24)
+	cd web && npm ci --no-audit --no-fund
+
+web-dev: ## dashboard dev server on :5173 with hot reload (proxies to make up-all services)
+	cd web && npm run dev
+
+web-check: ## dashboard typecheck, lint, format, unit tests, build
+	cd web && npm run typecheck && npm run lint && npm run format:check && npm test && npm run build
+
+web-e2e: ## Playwright browser test against the running stack (needs make up-all)
+	cd web && npx playwright test
+
+check: lint vuln test engine-test web-check ## everything CI runs except e2e (make up-all && make e2e web-e2e)

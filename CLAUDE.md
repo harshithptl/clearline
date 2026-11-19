@@ -5,7 +5,7 @@ Event-driven trade settlement and ledger engine. Go services, Kafka, Postgres, R
 @docs/SPEC.md
 
 ## Current status
-- Phase 1 done (schema, invariants, BuildEntries, Settle, duplicate-delivery harness). Phase 2 done (Kafka pipeline, outbox relay, balance, reconciler, C++ engine + adapter, gateway, compose stack, e2e test in CI). CI + repo standards done. Next: React/TS dashboard (web/), then Phase 3. See SPEC section 11.
+- Phase 1 done (schema, invariants, BuildEntries, Settle, duplicate-delivery harness). Phase 2 done (Kafka pipeline, outbox relay, balance, reconciler, C++ engine + adapter, gateway, compose stack, e2e test in CI). CI + repo standards done. Dashboard (web/) done. Next: Phase 3 (OpenTelemetry, Prometheus, Grafana, load + chaos tests). See SPEC section 11.
 - Update this line as phases complete.
 
 ## Hard rules for this codebase
@@ -21,6 +21,7 @@ Event-driven trade settlement and ledger engine. Go services, Kafka, Postgres, R
 - Explain any jargon the first time it appears.
 - Prefer concrete dry runs and visual traces (tables, ASCII flows) over abstract explanation.
 - C++: no lambdas. Use named static functions or comparators and explicit control flow.
+- Frontend: TypeScript strict; build feature UI only from `web/src/components/ui` primitives and the tokens in `web/src/index.css`; money is decimal strings / `lib/decimal.ts`, never JS numbers.
 - Never use em dashes in generated text, docs, or comments.
 - Work in small increments: propose the plan, then implement one piece with tests.
 - If you are unsure about a library API or version, say so and check rather than guess.
@@ -38,6 +39,7 @@ Event-driven trade settlement and ledger engine. Go services, Kafka, Postgres, R
 - Run Go tests: `go test ./... -race` (needs compose up; each test gets its own database via `internal/pgtest` and its own topics via `internal/kafkatest`; its own Valkey key prefix via `internal/redistest`; override with `CLEARLINE_TEST_DATABASE_URL`, `CLEARLINE_TEST_KAFKA_BROKERS`, `CLEARLINE_TEST_REDIS_ADDR`, `CLEARLINE_TEST_MATCHER_ADDR`; matcher tests use the compose engine)
 - Lint: `make lint` (gofmt, go vet, golangci-lint v2 in Docker, config .golangci.yml). Vulns: `make vuln`
 - Full stack in containers: `make up-all` (compose profile `app`, image from deploy/docker/services.Dockerfile); end-to-end: `make e2e` (test/e2e, build tag e2e)
+- Dashboard: `make web-install` once, then `make web-dev` (:5173) or `make up-all` (:3000); `make web-check` (tsc, eslint, prettier, vitest, build); `make web-e2e` (Playwright vs stack). Node 24, npm; generate lockfile changes with npm 11+ (npm 10 has a peer-resolution bug)
 - Load test: TBD
 - Chaos tests: TBD
 - Local database URL: postgres://clearline:clearline@127.0.0.1:5432/clearline?sslmode=disable
