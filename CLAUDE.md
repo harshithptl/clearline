@@ -5,7 +5,7 @@ Event-driven trade settlement and ledger engine. Go services, Kafka, Postgres, R
 @docs/SPEC.md
 
 ## Current status
-- Phase 1 done (schema, invariants, BuildEntries, Settle, duplicate-delivery harness). Phase 2 in progress: infra, settlement service, outbox relay, balance service, reconciler, C++ engine + matcher adapter, gateway done. Next: end-to-end (service images in compose, test/e2e). See SPEC section 11.
+- Phase 1 done (schema, invariants, BuildEntries, Settle, duplicate-delivery harness). Phase 2 done (Kafka pipeline, outbox relay, balance, reconciler, C++ engine + adapter, gateway, compose stack, e2e test in CI). CI + repo standards done. Next: React/TS dashboard (web/), then Phase 3. See SPEC section 11.
 - Update this line as phases complete.
 
 ## Hard rules for this codebase
@@ -37,6 +37,7 @@ Event-driven trade settlement and ledger engine. Go services, Kafka, Postgres, R
 - Replay DLQ: `go run ./cmd/dlq-replay`
 - Run Go tests: `go test ./... -race` (needs compose up; each test gets its own database via `internal/pgtest` and its own topics via `internal/kafkatest`; its own Valkey key prefix via `internal/redistest`; override with `CLEARLINE_TEST_DATABASE_URL`, `CLEARLINE_TEST_KAFKA_BROKERS`, `CLEARLINE_TEST_REDIS_ADDR`, `CLEARLINE_TEST_MATCHER_ADDR`; matcher tests use the compose engine)
 - Lint: `make lint` (gofmt, go vet, golangci-lint v2 in Docker, config .golangci.yml). Vulns: `make vuln`
+- Full stack in containers: `make up-all` (compose profile `app`, image from deploy/docker/services.Dockerfile); end-to-end: `make e2e` (test/e2e, build tag e2e)
 - Load test: TBD
 - Chaos tests: TBD
 - Local database URL: postgres://clearline:clearline@127.0.0.1:5432/clearline?sslmode=disable

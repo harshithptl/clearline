@@ -2,7 +2,7 @@
 
 Event-driven trade settlement and ledger engine, built in Go with Kafka, Postgres, and Redis, with an existing C++ matching engine plugged in as the matcher.
 
-Status: Phase 1 complete. Phase 2 next.
+Status: Phases 1 and 2 complete. Phase 3 next.
 
 ---
 

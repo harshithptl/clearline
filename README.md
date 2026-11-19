@@ -6,7 +6,7 @@ An event-driven trade settlement and double-entry ledger engine. Go services con
 
 The matching engine is the fast part: it matches an order in microseconds. The hard part is everything after a match. Every trade has to be posted to the ledger **exactly once**, never lost, with the books provably balanced, even when messages are redelivered, processes crash mid-write, or brokers restart. Clearline is built around that problem.
 
-> **Status:** in progress. Phase 1 (Postgres ledger, settlement, dedupe, invariant tests) is complete. Phase 2 (Kafka pipeline) is nearly done: every service runs and an order flows from REST into the ledger; the scripted end-to-end test is next. See [Roadmap](#roadmap). No performance numbers are published yet; every number will come with hardware, settings, and a script to reproduce it.
+> **Status:** Phases 1 and 2 are complete: the full pipeline runs in Docker Compose and an automated end-to-end test drives an order from REST into the ledger on every CI run. Phase 3 (observability, load and chaos tests) is next. See [Roadmap](#roadmap). No performance numbers are published yet; every number will come with hardware, settings, and a script to reproduce it.
 
 ## How a trade flows
 
@@ -72,7 +72,17 @@ Checked by tests now and by the reconciler later:
 
 ## Running locally
 
-Requirements: Go 1.27.4+, Docker. `make help` lists shortcuts for everything below (`make init`, `make test`, `make lint`, `make check` runs what CI runs).
+Requirements: Go 1.27.4+, Docker. `make help` lists every shortcut.
+
+The quickest way to see it work:
+
+```sh
+make up-all   # infrastructure + all six services in containers (gateway :8080, balance :8081)
+make e2e      # place orders through the gateway, check ledger, outbox, balances, reconciler
+make down     # stop everything (data kept; make reset deletes it)
+```
+
+Developing against the infrastructure only:
 
 ```sh
 # start Postgres, Kafka (KRaft, single broker), Valkey and the C++ engine (built in Docker)
@@ -88,7 +98,7 @@ go test ./... -race
 # run the settlement harness with a different random seed
 CLEARLINE_HARNESS_SEED=7 go test ./internal/settlement -run Harness -v
 
-# run the services (each in its own terminal; Ctrl-C shuts down cleanly)
+# or run the services from source (each in its own terminal; Ctrl-C shuts down cleanly)
 go run ./services/gateway          # POST localhost:8080/orders -> orders
 go run ./services/matcher-adapter  # orders -> C++ engine -> trades
 go run ./services/settlement     # trades -> ledger + outbox
@@ -153,7 +163,10 @@ internal/messages/    versioned JSON wire formats (money as decimal strings)
 internal/dlq/         dead-letter record format and replay
 internal/backoff/     exponential backoff with jitter
 internal/env/         service configuration from environment variables
-deploy/compose/       local Docker Compose stack: Postgres, Kafka, Valkey
+deploy/compose/       Docker Compose: Postgres, Kafka, Valkey, engine; profile "app" adds every service
+deploy/docker/        one multi-arch distroless image holding every Go binary
+test/e2e/             end-to-end test against the running stack (build tag e2e, make e2e)
+cmd/healthcheck/      tiny HTTP probe for compose healthchecks (the images have no shell)
 docs/decisions/       short design-decision notes
 ```
 
@@ -184,7 +197,7 @@ Progress:
 - [x] Balance service + reconciler (all 5 invariants checked)
 - [x] C++ engine over gRPC + matcher adapter (replay-based recovery, decision 0002)
 - [x] Gateway (two-layer idempotency, decision 0003)
-- [ ] End-to-end: one order flows into the ledger
+- [x] End-to-end: one order flows into the ledger (test/e2e, runs in CI)
 
 ## Design
 
