@@ -1,5 +1,8 @@
 version: "2"
 
+run:
+  build-tags: [e2e] # lint test/e2e too
+
 linters:
   default: standard # errcheck, govet, ineffassign, staticcheck, unused
   enable:

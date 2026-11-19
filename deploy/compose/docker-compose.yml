@@ -1,3 +1,26 @@
+# Shared settings for the Clearline services below (YAML anchors; compose
+# ignores top-level keys starting with x-).
+x-app: &app
+  image: clearline:dev
+  pull_policy: never # built locally by the migrate service below
+  profiles: [app]
+  restart: unless-stopped
+  environment:
+    CLEARLINE_DATABASE_URL: postgres://clearline:clearline@postgres:5432/clearline?sslmode=disable
+    CLEARLINE_KAFKA_BROKERS: kafka:19092
+    CLEARLINE_REDIS_ADDR: valkey:6379
+    CLEARLINE_MATCHER_ADDR: engine:50051
+    # Gateway and matcher adapter must agree on symbols. E2E is a book used
+    # only by test/e2e, so its orders never meet manual ones.
+    CLEARLINE_SYMBOLS: AAPL:USD:0.01:150,MSFT:USD:0.01:400,TSLA:USD:0.01:250,NVDA:USD:0.01:500,E2E:USD:0.01:100
+
+x-after-init: &after-init
+  migrate: {condition: service_completed_successfully}
+  topics: {condition: service_completed_successfully}
+  postgres: {condition: service_healthy}
+  kafka: {condition: service_healthy}
+  valkey: {condition: service_healthy}
+
 services:
   postgres:
     image: postgres:16
@@ -86,6 +109,76 @@ services:
       retries: 15
     ports:
       - "50051:50051"
+
+  # ---- Clearline services (profile "app") --------------------------------
+  # `make up` starts only the infrastructure above (what `go test` needs).
+  # `make up-all` adds these, all from one image (deploy/docker/services.Dockerfile).
+  # Startup order: infra healthy -> migrate + topics complete -> services.
+
+  # Builds the shared image (once); every other service reuses it.
+  migrate:
+    <<: *app
+    build:
+      context: ../..
+      dockerfile: deploy/docker/services.Dockerfile
+    command: ["migrate"]
+    restart: "no"
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  topics:
+    <<: *app
+    command: ["topics"]
+    restart: "no"
+    depends_on:
+      kafka: {condition: service_healthy}
+
+  gateway:
+    <<: *app
+    command: ["gateway"]
+    ports: ["8080:8080"]
+    stop_grace_period: 15s # in-flight requests finish their Kafka write
+    healthcheck:
+      test: ["CMD", "healthcheck", "http://127.0.0.1:8080/healthz"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    depends_on: *after-init
+
+  # Exits on any engine or Kafka error by design; the restart policy is the
+  # recovery path (replay, docs/decisions/0002-matcher-replay.md).
+  matcher-adapter:
+    <<: *app
+    command: ["matcher-adapter"]
+    depends_on:
+      <<: *after-init
+      engine: {condition: service_healthy}
+
+  settlement:
+    <<: *app
+    command: ["settlement"]
+    depends_on: *after-init
+
+  outbox-relay:
+    <<: *app
+    command: ["outbox-relay"]
+    depends_on: *after-init
+
+  balance:
+    <<: *app
+    command: ["balance"]
+    ports: ["8081:8081"]
+    healthcheck:
+      test: ["CMD", "healthcheck", "http://127.0.0.1:8081/healthz"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    depends_on: *after-init
+
+  reconciler:
+    <<: *app
+    command: ["reconciler"]
+    depends_on: *after-init
 
 volumes:
   pgdata:

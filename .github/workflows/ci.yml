@@ -118,3 +118,40 @@ jobs:
       - name: stack logs
         if: failure()
         run: docker compose -f deploy/compose/docker-compose.yml logs --no-color --tail=200
+
+  # The whole stack in compose, driven from outside: REST in, ledger, outbox,
+  # balances and reconciler checked (test/e2e).
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: engine image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: engine/Dockerfile
+          target: runtime
+          tags: clearline-engine:dev
+          load: true
+          cache-from: type=gha,scope=engine
+      - name: services image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/docker/services.Dockerfile
+          tags: clearline:dev
+          load: true
+          cache-from: type=gha,scope=services
+          cache-to: type=gha,scope=services,mode=max
+      - name: start stack
+        run: docker compose -f deploy/compose/docker-compose.yml --profile app up -d --wait
+      - name: e2e
+        run: go test -tags e2e -count=1 -v ./test/e2e
+      - name: stack logs
+        if: failure()
+        run: docker compose -f deploy/compose/docker-compose.yml --profile app logs --no-color --tail=200

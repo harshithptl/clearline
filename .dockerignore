@@ -1,0 +1,9 @@
+# Build context is the repo root for both images; keep it small.
+.git
+.github
+**/build
+**/cmake-build-*
+*.out
+coverage.*
+docs
+web/node_modules
