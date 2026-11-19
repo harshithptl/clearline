@@ -6,6 +6,14 @@ Every number here comes with its hardware, settings and the command that produce
 
 One change per step, each from a fresh stack: volumes reset, images rebuilt from that step's commit, the same sweep, and no other clients connected (`observers: none` in every report).
 
+| Step | Highest sustained rate tested | Order to ledger p50 / p99 there | Bottleneck |
+|---|---|---|---|
+| 1. Baseline | **100 trades/s** | 1.9 / 86 ms | balance service |
+| 2. + balance batching | **731 trades/s** | 101 / 711 ms | settlement |
+| 3. + settlement batching | **2000 trades/s** (the highest rate offered) | 12.7 / 107 ms | not reached; one unexplained short run at 1500 (below) |
+
+![order-to-ledger p99 vs settled throughput, three steps](2026-11-19-m4-clean-compare.svg)
+
 | | |
 |---|---|
 | Hardware | Apple M4 (4 performance + 6 efficiency cores), 16 GB, macOS 15.7.3 |
@@ -49,7 +57,36 @@ Each fetched partition is applied concurrently, as a batch: one `WATCH`/`MULTI`/
 
 ![order-to-ledger p99, baseline vs balance batching](2026-11-19-m4-clean-compare-balance.svg)
 
-The next step batches settlement the same way.
+### Step 3: + settlement batching (measured at `1b49368`; rebased as `0430ab6`, same code)
+
+Each fetched partition settles concurrently as ONE Postgres transaction: the dedupe insert uses `unnest` with `ON CONFLICT DO NOTHING RETURNING`, and the ledger and outbox rows go in set-based, in trade order. A message-level failure falls back to settling trades one at a time. Raw data: [results/2026-11-19-m4-clean-3-settlement.json](results/2026-11-19-m4-clean-3-settlement.json).
+
+| Trades/s offered | Settled | Ack p50 / p99 | Order to ledger p50 / p99 | Freshness p50 / p99 | Settlement lag | Balance lag | Sustained |
+|---|---|---|---|---|---|---|---|
+| 100 | 100 | 5.8 / 87.8 ms | 2.4 / 87.6 ms | 14.5 / 86.5 ms | 0 | 0 | **yes** |
+| 250 | 250 | 1.6 / 37.5 ms | 1.4 / 23.2 ms | 9.6 / 94.4 ms | 0 | 8 | **yes** |
+| 500 | 500 | 3.2 / 35.2 ms | 2.3 / 42.4 ms | 15.9 / 128 ms | 1 | 84 | **yes** |
+| 750 | 750 | 5.6 / 186 ms | 6.1 / 104 ms | 28.6 / 311 ms | 4 | 446 | **yes** |
+| 1000 | 998 | 4.9 / 216 ms | 6.7 / 148 ms | 27.4 / 143 ms | 7 | 60 | **yes** |
+| 1500 | 1411 | 14.3 ms / 5.37 s | 16.1 / 139 ms | 49.1 / 278 ms | 130 | 1,044 | no: 94% of target |
+| 2000 | 2000 | 8.1 / 299 ms | 12.7 / 107 ms | 47.2 / 241 ms | 15 | 102 | **yes** |
+
+**Sustained: 2000 trades/s, the highest rate offered, so capacity wasn't found.** That's 20x the baseline and 2.7x step 2. Latency also improved at every rate: order-to-ledger p99 at 250 trades/s is 23 ms, down from 129 ms at the baseline. Settlement now commits a batch per poll instead of one transaction per trade, which also takes fsync pressure off the shared disk.
+
+What this run doesn't settle:
+
+- **The 1500 trades/s run fell short:** 1411/s settled, 94% of the target, with a gateway ack p99 of 5.4 s. The 2000 trades/s run right after it held cleanly. One run per rate can't tell a transient stall from a real limit, and the cause isn't identified. Repeating each rate several times is the next methodology step.
+- **The 100 trades/s run is the first run on a cold stack,** and its p99 (88 ms) is higher than at 250 or 500. Warm-up costs such as connection setup, the Kafka broker's JVM warming up, and a cold page cache likely explain it, but that's unverified.
+- **The load generator runs on the same machine**, and at 4000 orders/s it competes with the stack for CPU. The next ceiling may belong to the generator.
+
+SPEC 7.1 targets against step 3:
+
+| Target | Step 3 | |
+|---|---|---|
+| 1000 trades/s sustained | 998/s at 1000 offered, 2000/s at 2000 | **met** |
+| Order to ledger p50 < 20 ms, p99 < 75 ms | 2.3 / 42 ms at 500 trades/s; 6.7 / 148 ms at 1000 | p99 met up to 500 trades/s |
+| Balance freshness p99 < 50 ms | 86 to 311 ms | missed |
+| Order acknowledged p50 < 5 ms, p99 < 15 ms | p50 1.6 to 5.8 ms; p99 35 to 300 ms | p50 mostly met; p99 missed |
 
 
 ## Earlier baseline: 2026-11-19, Apple M4, unbatched (superseded)

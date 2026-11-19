@@ -152,10 +152,10 @@ func fmtMS(v float64) string {
 	return fmt.Sprintf("%gms", v)
 }
 
-// niceCeil rounds up to 1, 2 or 5 times a power of ten.
+// niceCeil rounds up to a round axis maximum (1, 1.5, 2, 2.5, 3, 4, 5, 6 or 8 times a power of ten).
 func niceCeil(v float64) float64 {
 	p := math.Pow(10, math.Floor(math.Log10(v)))
-	for _, m := range []float64{1, 2, 5, 10} {
+	for _, m := range []float64{1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10} {
 		if m*p >= v {
 			return m * p
 		}

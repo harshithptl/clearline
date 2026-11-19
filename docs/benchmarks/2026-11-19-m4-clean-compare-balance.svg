@@ -25,35 +25,35 @@
 <line x1="70.0" x2="70.0" y1="62" y2="384.0" stroke="#ececea"/>
 <text x="70.0" y="402.0" text-anchor="middle" fill="#6b6b66">0</text>
 <line x1="166.0" x2="166.0" y1="62" y2="384.0" stroke="#ececea"/>
-<text x="166.0" y="402.0" text-anchor="middle" fill="#6b6b66">200</text>
+<text x="166.0" y="402.0" text-anchor="middle" fill="#6b6b66">160</text>
 <line x1="262.0" x2="262.0" y1="62" y2="384.0" stroke="#ececea"/>
-<text x="262.0" y="402.0" text-anchor="middle" fill="#6b6b66">400</text>
+<text x="262.0" y="402.0" text-anchor="middle" fill="#6b6b66">320</text>
 <line x1="358.0" x2="358.0" y1="62" y2="384.0" stroke="#ececea"/>
-<text x="358.0" y="402.0" text-anchor="middle" fill="#6b6b66">600</text>
+<text x="358.0" y="402.0" text-anchor="middle" fill="#6b6b66">480</text>
 <line x1="454.0" x2="454.0" y1="62" y2="384.0" stroke="#ececea"/>
-<text x="454.0" y="402.0" text-anchor="middle" fill="#6b6b66">800</text>
+<text x="454.0" y="402.0" text-anchor="middle" fill="#6b6b66">640</text>
 <line x1="550.0" x2="550.0" y1="62" y2="384.0" stroke="#ececea"/>
-<text x="550.0" y="402.0" text-anchor="middle" fill="#6b6b66">1000</text>
+<text x="550.0" y="402.0" text-anchor="middle" fill="#6b6b66">800</text>
 <text x="310.0" y="426" text-anchor="middle" fill="#1c1c1a">settled trades per second</text>
 <text transform="translate(18 223.0) rotate(-90)" text-anchor="middle" fill="#1c1c1a">order to ledger p99 (log scale)</text>
-<polyline fill="none" stroke="#6b6b66" stroke-width="2" points="118.0,283.8 190.0,264.8 310.0,210.3 397.9,113.8 322.8,62.0 321.9,62.0 255.8,62.0"/>
-<circle cx="118.0" cy="283.8" r="3.5" fill="#6b6b66" stroke="#6b6b66" stroke-width="1.5"/>
-<circle cx="190.0" cy="264.8" r="3.5" fill="#ffffff" stroke="#6b6b66" stroke-width="1.5"/>
-<circle cx="310.0" cy="210.3" r="3.5" fill="#ffffff" stroke="#6b6b66" stroke-width="1.5"/>
-<circle cx="397.9" cy="113.8" r="3.5" fill="#ffffff" stroke="#6b6b66" stroke-width="1.5"/>
-<circle cx="322.8" cy="62.0" r="3.5" fill="#ffffff" stroke="#6b6b66" stroke-width="1.5"/>
-<circle cx="321.9" cy="62.0" r="3.5" fill="#ffffff" stroke="#6b6b66" stroke-width="1.5"/>
-<circle cx="255.8" cy="62.0" r="3.5" fill="#ffffff" stroke="#6b6b66" stroke-width="1.5"/>
+<polyline fill="none" stroke="#6b6b66" stroke-width="2" points="130.0,283.8 220.0,264.8 370.0,210.3 479.8,113.8 386.0,62.0 384.9,62.0 302.2,62.0"/>
+<circle cx="130.0" cy="283.8" r="3.5" fill="#6b6b66" stroke="#6b6b66" stroke-width="1.5"/>
+<circle cx="220.0" cy="264.8" r="3.5" fill="#ffffff" stroke="#6b6b66" stroke-width="1.5"/>
+<circle cx="370.0" cy="210.3" r="3.5" fill="#ffffff" stroke="#6b6b66" stroke-width="1.5"/>
+<circle cx="479.8" cy="113.8" r="3.5" fill="#ffffff" stroke="#6b6b66" stroke-width="1.5"/>
+<circle cx="386.0" cy="62.0" r="3.5" fill="#ffffff" stroke="#6b6b66" stroke-width="1.5"/>
+<circle cx="384.9" cy="62.0" r="3.5" fill="#ffffff" stroke="#6b6b66" stroke-width="1.5"/>
+<circle cx="302.2" cy="62.0" r="3.5" fill="#ffffff" stroke="#6b6b66" stroke-width="1.5"/>
 <line x1="566.0" x2="588.0" y1="72.0" y2="72.0" stroke="#6b6b66" stroke-width="2"/>
 <text x="594.0" y="76.0" fill="#1c1c1a">baseline</text>
-<polyline fill="none" stroke="#d1495b" stroke-width="2" points="118.0,258.8 190.0,212.0 307.7,184.7 420.8,185.2 331.3,62.0 298.7,62.0 283.3,62.0"/>
-<circle cx="118.0" cy="258.8" r="3.5" fill="#d1495b" stroke="#d1495b" stroke-width="1.5"/>
-<circle cx="190.0" cy="212.0" r="3.5" fill="#d1495b" stroke="#d1495b" stroke-width="1.5"/>
-<circle cx="307.7" cy="184.7" r="3.5" fill="#d1495b" stroke="#d1495b" stroke-width="1.5"/>
-<circle cx="420.8" cy="185.2" r="3.5" fill="#d1495b" stroke="#d1495b" stroke-width="1.5"/>
-<circle cx="331.3" cy="62.0" r="3.5" fill="#ffffff" stroke="#d1495b" stroke-width="1.5"/>
-<circle cx="298.7" cy="62.0" r="3.5" fill="#ffffff" stroke="#d1495b" stroke-width="1.5"/>
-<circle cx="283.3" cy="62.0" r="3.5" fill="#ffffff" stroke="#d1495b" stroke-width="1.5"/>
+<polyline fill="none" stroke="#d1495b" stroke-width="2" points="130.0,258.8 220.0,212.0 367.2,184.7 508.5,185.2 396.6,62.0 355.9,62.0 336.6,62.0"/>
+<circle cx="130.0" cy="258.8" r="3.5" fill="#d1495b" stroke="#d1495b" stroke-width="1.5"/>
+<circle cx="220.0" cy="212.0" r="3.5" fill="#d1495b" stroke="#d1495b" stroke-width="1.5"/>
+<circle cx="367.2" cy="184.7" r="3.5" fill="#d1495b" stroke="#d1495b" stroke-width="1.5"/>
+<circle cx="508.5" cy="185.2" r="3.5" fill="#d1495b" stroke="#d1495b" stroke-width="1.5"/>
+<circle cx="396.6" cy="62.0" r="3.5" fill="#ffffff" stroke="#d1495b" stroke-width="1.5"/>
+<circle cx="355.9" cy="62.0" r="3.5" fill="#ffffff" stroke="#d1495b" stroke-width="1.5"/>
+<circle cx="336.6" cy="62.0" r="3.5" fill="#ffffff" stroke="#d1495b" stroke-width="1.5"/>
 <line x1="566.0" x2="588.0" y1="92.0" y2="92.0" stroke="#d1495b" stroke-width="2"/>
 <text x="594.0" y="96.0" fill="#1c1c1a">+ balance batching</text>
 <circle cx="577.0" cy="118.0" r="3.5" fill="#ffffff" stroke="#6b6b66" stroke-width="1.5"/>
