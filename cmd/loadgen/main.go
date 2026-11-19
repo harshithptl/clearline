@@ -55,6 +55,7 @@ type options struct {
 	jsonOut, svgOut     string
 	scrapeWait, drain   time.Duration
 	replot              string
+	compare             string
 	allowObservers      bool
 }
 
@@ -84,8 +85,9 @@ func parseFlags() (options, error) {
 	flag.DurationVar(&o.drain, "drain-timeout", 3*time.Minute, "max wait for consumer lag to reach 0 between runs")
 	flag.BoolVar(&o.allowObservers, "allow-observers", false, "run even if a dashboard or other client is reading the balance API (it skews results)")
 	flag.StringVar(&o.replot, "replot", "", "re-judge an existing report, print it, and rewrite -json / -svg; no load is sent")
+	flag.StringVar(&o.compare, "compare", "", "name=report.json,... : draw -svg comparing order-to-ledger p99 across configurations; no load is sent")
 	flag.Parse()
-	if o.replot != "" {
+	if o.replot != "" || o.compare != "" {
 		return o, nil
 	}
 	if o.hardware == "" {
@@ -107,6 +109,9 @@ func parseFlags() (options, error) {
 func run(o options) error {
 	if o.replot != "" {
 		return replot(o)
+	}
+	if o.compare != "" {
+		return compare(o)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -344,4 +349,36 @@ func checkObservers(ctx context.Context, prom loadgen.Prom) string {
 		return "none"
 	}
 	return fmt.Sprintf("%.0f dashboard streams, %.1f balance list requests/s", subs, lists)
+}
+
+func compare(o options) error {
+	var configs []loadgen.Configuration
+	for _, item := range strings.Split(o.compare, ",") {
+		name, path, ok := strings.Cut(item, "=")
+		if !ok {
+			return fmt.Errorf("-compare item %q: want name=path", item)
+		}
+		b, err := os.ReadFile(filepath.Clean(path))
+		if err != nil {
+			return err
+		}
+		var r loadgen.Report
+		if err := json.Unmarshal(b, &r); err != nil {
+			return err
+		}
+		for i := range r.Runs {
+			loadgen.Judge(&r.Runs[i])
+		}
+		configs = append(configs, loadgen.Configuration{Name: name, Report: r})
+	}
+	if o.svgOut == "" {
+		return fmt.Errorf("-compare needs -svg")
+	}
+	f, err := os.Create(filepath.Clean(o.svgOut))
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return loadgen.PlotCompare(f, "Clearline: order-to-ledger p99 vs settled throughput",
+		configs[0].Report.Environment.Hardware, "p99", configs)
 }

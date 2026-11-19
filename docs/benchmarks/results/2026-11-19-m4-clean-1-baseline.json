@@ -1,0 +1,391 @@
+{
+  "environment": {
+    "hardware": "Apple M4 (4P+6E cores), 16 GB, macOS 15.7.3; stack and load generator on the same machine; Docker Desktop VM 10 CPUs / 7.7 GiB",
+    "host": "darwin/arm64, 10 CPUs visible to the load generator",
+    "docker": "Docker Desktop, 10 CPUs, 8218034176 bytes memory, server 28.4.0",
+    "commit": "0095043",
+    "durability": "Kafka acks=all (1 broker, replication 1); Postgres synchronous_commit=on fsync=on; Valkey appendfsync=always",
+    "observers": "none",
+    "started_at": "2026-11-19T20:18:40.027998Z"
+  },
+  "runs": [
+    {
+      "settings": {
+        "orders_per_sec": 200,
+        "target_trades_per_sec": 100,
+        "duration_ns": 30000000000,
+        "max_in_flight": 512,
+        "accounts": 100,
+        "symbol": "LOAD"
+      },
+      "gateway_ack_client": {
+        "count": 6000,
+        "errors": 0,
+        "p50_ns": 1998625,
+        "p90_ns": 4607250,
+        "p99_ns": 76936250,
+        "p999_ns": 325572791,
+        "max_ns": 355595291
+      },
+      "sent_per_sec": 200.02406650896916,
+      "settled_trades": 3000,
+      "settled_trades_per_sec": 100,
+      "pipeline": {
+        "order_to_ledger": {
+          "p50_ns": 1944349,
+          "p99_ns": 85808918
+        },
+        "balance_freshness": {
+          "p50_ns": 9221897,
+          "p99_ns": 204906709
+        },
+        "gateway_post_orders": {
+          "p50_ns": 1408805,
+          "p99_ns": 77216236
+        },
+        "settle_transaction": {
+          "p50_ns": 663115,
+          "p99_ns": 6085723
+        },
+        "settlement_lag": {
+          "max_records": 0,
+          "end_records": 0
+        },
+        "balance_lag": {
+          "max_records": 2,
+          "end_records": 2
+        },
+        "window_ns": 30000000000,
+        "bucket_caveat": "quantiles from histogram buckets (0.5ms to 10s, 20 exponential steps): accurate to within one bucket",
+        "prometheus_eval_time": "2026-11-19T15:19:10.030644-05:00"
+      },
+      "drain_ns": 1145250,
+      "sustained": true,
+      "sustained_reason": "throughput held, lag bounded"
+    },
+    {
+      "settings": {
+        "orders_per_sec": 500,
+        "target_trades_per_sec": 250,
+        "duration_ns": 30000000000,
+        "max_in_flight": 512,
+        "accounts": 100,
+        "symbol": "LOAD"
+      },
+      "gateway_ack_client": {
+        "count": 15000,
+        "errors": 0,
+        "p50_ns": 2748708,
+        "p90_ns": 12468458,
+        "p99_ns": 71372833,
+        "p999_ns": 222825000,
+        "max_ns": 246881541
+      },
+      "sent_per_sec": 500.0128711646586,
+      "settled_trades": 7500,
+      "settled_trades_per_sec": 250,
+      "pipeline": {
+        "order_to_ledger": {
+          "p50_ns": 2435627,
+          "p99_ns": 128921460
+        },
+        "balance_freshness": {
+          "p50_ns": 840264244,
+          "p99_ns": 4833604003
+        },
+        "gateway_post_orders": {
+          "p50_ns": 2483051,
+          "p99_ns": 75788243
+        },
+        "settle_transaction": {
+          "p50_ns": 888692,
+          "p99_ns": 8897468
+        },
+        "settlement_lag": {
+          "max_records": 2,
+          "end_records": 0
+        },
+        "balance_lag": {
+          "max_records": 1604,
+          "end_records": 1604
+        },
+        "window_ns": 30000000000,
+        "bucket_caveat": "quantiles from histogram buckets (0.5ms to 10s, 20 exponential steps): accurate to within one bucket",
+        "prometheus_eval_time": "2026-11-19T15:19:52.076269-05:00"
+      },
+      "drain_ns": 1835958,
+      "sustained": false,
+      "sustained_reason": "balance 1604 events behind"
+    },
+    {
+      "settings": {
+        "orders_per_sec": 1000,
+        "target_trades_per_sec": 500,
+        "duration_ns": 30000000000,
+        "max_in_flight": 512,
+        "accounts": 100,
+        "symbol": "LOAD"
+      },
+      "gateway_ack_client": {
+        "count": 30000,
+        "errors": 0,
+        "p50_ns": 3706125,
+        "p90_ns": 10878125,
+        "p99_ns": 58798167,
+        "p999_ns": 116007708,
+        "max_ns": 149390500
+      },
+      "sent_per_sec": 999.8340261852135,
+      "settled_trades": 14998,
+      "settled_trades_per_sec": 499.93333333333334,
+      "pipeline": {
+        "order_to_ledger": {
+          "p50_ns": 3661413,
+          "p99_ns": 415219746
+        },
+        "balance_freshness": {
+          "p50_ns": 9019231216,
+          "p99_ns": 9999999999
+        },
+        "gateway_post_orders": {
+          "p50_ns": 3347599,
+          "p99_ns": 52789909
+        },
+        "settle_transaction": {
+          "p50_ns": 907968,
+          "p99_ns": 6310046
+        },
+        "settlement_lag": {
+          "max_records": 3,
+          "end_records": 1
+        },
+        "balance_lag": {
+          "max_records": 19674,
+          "end_records": 23680
+        },
+        "window_ns": 30000000000,
+        "bucket_caveat": "quantiles from histogram buckets (0.5ms to 10s, 20 exponential steps): accurate to within one bucket",
+        "prometheus_eval_time": "2026-11-19T15:20:34.138479-05:00"
+      },
+      "drain_ns": 8022491875,
+      "sustained": false,
+      "sustained_reason": "balance 23680 events behind"
+    },
+    {
+      "settings": {
+        "orders_per_sec": 1500,
+        "target_trades_per_sec": 750,
+        "duration_ns": 30000000000,
+        "max_in_flight": 512,
+        "accounts": 100,
+        "symbol": "LOAD"
+      },
+      "gateway_ack_client": {
+        "count": 45000,
+        "errors": 0,
+        "p50_ns": 4880772,
+        "p90_ns": 12354861,
+        "p99_ns": 77826902,
+        "p999_ns": 115769637,
+        "max_ns": 156293178
+      },
+      "sent_per_sec": 1499.6576739925636,
+      "settled_trades": 20491,
+      "settled_trades_per_sec": 683.0333333333333,
+      "pipeline": {
+        "order_to_ledger": {
+          "p50_ns": 161560624,
+          "p99_ns": 3289696792
+        },
+        "balance_freshness": {
+          "p50_ns": 9999999999,
+          "p99_ns": 9999999999
+        },
+        "gateway_post_orders": {
+          "p50_ns": 4456042,
+          "p99_ns": 64640533
+        },
+        "settle_transaction": {
+          "p50_ns": 1080383,
+          "p99_ns": 5956554
+        },
+        "settlement_lag": {
+          "max_records": 1092,
+          "end_records": 2148
+        },
+        "balance_lag": {
+          "max_records": 33292,
+          "end_records": 38272
+        },
+        "window_ns": 30000000000,
+        "bucket_caveat": "quantiles from histogram buckets (0.5ms to 10s, 20 exponential steps): accurate to within one bucket",
+        "prometheus_eval_time": "2026-11-19T15:21:24.219067-05:00"
+      },
+      "drain_ns": 33083339125,
+      "sustained": false,
+      "sustained_reason": "settled 683/s of 750/s target"
+    },
+    {
+      "settings": {
+        "orders_per_sec": 2000,
+        "target_trades_per_sec": 1000,
+        "duration_ns": 30000000000,
+        "max_in_flight": 512,
+        "accounts": 100,
+        "symbol": "LOAD"
+      },
+      "gateway_ack_client": {
+        "count": 60000,
+        "errors": 0,
+        "p50_ns": 8105500,
+        "p90_ns": 24294791,
+        "p99_ns": 114944833,
+        "p999_ns": 204710750,
+        "max_ns": 235966958
+      },
+      "sent_per_sec": 1999.677063285815,
+      "settled_trades": 15798,
+      "settled_trades_per_sec": 526.6,
+      "pipeline": {
+        "order_to_ledger": {
+          "p50_ns": 8264288487,
+          "p99_ns": 9999999999
+        },
+        "balance_freshness": {
+          "p50_ns": 9999999999,
+          "p99_ns": 9999999999
+        },
+        "gateway_post_orders": {
+          "p50_ns": 8290740,
+          "p99_ns": 120276824
+        },
+        "settle_transaction": {
+          "p50_ns": 1509472,
+          "p99_ns": 8448909
+        },
+        "settlement_lag": {
+          "max_records": 11916,
+          "end_records": 14414
+        },
+        "balance_lag": {
+          "max_records": 24766,
+          "end_records": 29766
+        },
+        "window_ns": 30000000000,
+        "bucket_caveat": "quantiles from histogram buckets (0.5ms to 10s, 20 exponential steps): accurate to within one bucket",
+        "prometheus_eval_time": "2026-11-19T15:22:39.404394-05:00"
+      },
+      "drain_ns": 53142608000,
+      "sustained": false,
+      "sustained_reason": "settled 527/s of 1000/s target"
+    },
+    {
+      "settings": {
+        "orders_per_sec": 3000,
+        "target_trades_per_sec": 1500,
+        "duration_ns": 30000000000,
+        "max_in_flight": 512,
+        "accounts": 100,
+        "symbol": "LOAD"
+      },
+      "gateway_ack_client": {
+        "count": 90000,
+        "errors": 0,
+        "p50_ns": 8828407,
+        "p90_ns": 33587319,
+        "p99_ns": 281175239,
+        "p999_ns": 402460467,
+        "max_ns": 445115167
+      },
+      "sent_per_sec": 2998.5947918117995,
+      "settled_trades": 15743,
+      "settled_trades_per_sec": 524.7666666666667,
+      "pipeline": {
+        "order_to_ledger": {
+          "p50_ns": 9999999999,
+          "p99_ns": 9999999999
+        },
+        "balance_freshness": {
+          "p50_ns": 9999999999,
+          "p99_ns": 9999999999
+        },
+        "gateway_post_orders": {
+          "p50_ns": 8812674,
+          "p99_ns": 251473413
+        },
+        "settle_transaction": {
+          "p50_ns": 1517449,
+          "p99_ns": 7439163
+        },
+        "settlement_lag": {
+          "max_records": 23828,
+          "end_records": 28885
+        },
+        "balance_lag": {
+          "max_records": 24484,
+          "end_records": 29408
+        },
+        "window_ns": 30000000000,
+        "bucket_caveat": "quantiles from histogram buckets (0.5ms to 10s, 20 exponential steps): accurate to within one bucket",
+        "prometheus_eval_time": "2026-11-19T15:24:14.673349-05:00"
+      },
+      "drain_ns": 82313254958,
+      "sustained": false,
+      "sustained_reason": "settled 525/s of 1500/s target"
+    },
+    {
+      "settings": {
+        "orders_per_sec": 4000,
+        "target_trades_per_sec": 2000,
+        "duration_ns": 30000000000,
+        "max_in_flight": 512,
+        "accounts": 100,
+        "symbol": "LOAD"
+      },
+      "gateway_ack_client": {
+        "count": 120000,
+        "errors": 0,
+        "p50_ns": 15212334,
+        "p90_ns": 306508500,
+        "p99_ns": 670920917,
+        "p999_ns": 709748500,
+        "max_ns": 727798542
+      },
+      "sent_per_sec": 3998.6274767166956,
+      "settled_trades": 11612,
+      "settled_trades_per_sec": 387.06666666666666,
+      "pipeline": {
+        "order_to_ledger": {
+          "p50_ns": 9999999999,
+          "p99_ns": 9999999999
+        },
+        "balance_freshness": {
+          "p50_ns": 9999999999,
+          "p99_ns": 9999999999
+        },
+        "gateway_post_orders": {
+          "p50_ns": 15942853,
+          "p99_ns": 237611401
+        },
+        "settle_transaction": {
+          "p50_ns": 2047833,
+          "p99_ns": 11055857
+        },
+        "settlement_lag": {
+          "max_records": 39983,
+          "end_records": 39983
+        },
+        "balance_lag": {
+          "max_records": 18388,
+          "end_records": 22030
+        },
+        "window_ns": 30000000000,
+        "bucket_caveat": "quantiles from histogram buckets (0.5ms to 10s, 20 exponential steps): accurate to within one bucket",
+        "prometheus_eval_time": "2026-11-19T15:26:19.117552-05:00"
+      },
+      "drain_ns": 158054571916,
+      "sustained": false,
+      "sustained_reason": "settled 387/s of 2000/s target"
+    }
+  ]
+}
