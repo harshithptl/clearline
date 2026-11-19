@@ -16,6 +16,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -41,6 +43,7 @@ const (
 var (
 	gatewayURL = env.String("CLEARLINE_E2E_GATEWAY", "http://localhost:8080")
 	balanceURL = env.String("CLEARLINE_E2E_BALANCE", "http://localhost:8081")
+	promURL    = env.String("CLEARLINE_E2E_PROMETHEUS", "http://localhost:9090")
 	notional   = decimal.RequireFromString(price).Mul(decimal.RequireFromString(qty)) // 501.25
 )
 
@@ -274,4 +277,45 @@ func TestOrderFlowsIntoLedger(t *testing.T) {
 		return err == nil && r.OK() && len(r.Lagging) == 0
 	})
 	t.Logf("reconciled %d accounts, trade %s", rep.Accounts, trade)
+
+	// Observability: Prometheus scrapes every service, and the SPEC 7.1
+	// latencies were measured across services from the Kafka timing headers.
+	kafkatest.Eventually(t, timeout, "every target up", func() bool {
+		v, ok := promQuery(t, `min(up)`)
+		return ok && v == 1
+	})
+	for _, q := range []string{
+		`sum(clearline_settlement_order_to_ledger_seconds_count)`,
+		`sum(clearline_balance_freshness_seconds_count)`,
+		`sum(clearline_gateway_produce_duration_seconds_count)`,
+		`clearline_reconciler_state{state="clean"}`,
+	} {
+		kafkatest.Eventually(t, timeout, q, func() bool {
+			v, ok := promQuery(t, q)
+			return ok && v > 0
+		})
+	}
+}
+
+// promQuery runs an instant query and returns the single result's value.
+func promQuery(t *testing.T, q string) (float64, bool) {
+	t.Helper()
+	resp, err := http.Get(promURL + "/api/v1/query?query=" + url.QueryEscape(q))
+	if err != nil {
+		return 0, false
+	}
+	defer resp.Body.Close()
+	var body struct {
+		Data struct {
+			Result []struct {
+				Value [2]any `json:"value"`
+			} `json:"result"`
+		} `json:"data"`
+	}
+	if json.NewDecoder(resp.Body).Decode(&body) != nil || len(body.Data.Result) != 1 {
+		return 0, false
+	}
+	s, _ := body.Data.Result[0].Value[1].(string)
+	v, err := strconv.ParseFloat(s, 64)
+	return v, err == nil
 }

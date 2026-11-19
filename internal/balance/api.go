@@ -35,7 +35,7 @@ const keepAlive = 15 * time.Second
 //	GET /events              Server-Sent Events: one "ledger" event per applied
 //	                         ledger event (only if hub is non-nil)
 //	GET /healthz             Valkey reachable
-func Handler(store *Store, hub *Hub) http.Handler {
+func Handler(store *Store, hub *Hub) *http.ServeMux {
 	h := &api{store: store, hub: hub}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /balances", h.list)

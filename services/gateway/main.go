@@ -34,6 +34,7 @@ import (
 	"github.com/harshithptl/clearline/internal/env"
 	"github.com/harshithptl/clearline/internal/gateway"
 	"github.com/harshithptl/clearline/internal/matcher"
+	"github.com/harshithptl/clearline/internal/metrics"
 	"github.com/harshithptl/clearline/internal/topics"
 )
 
@@ -93,9 +94,15 @@ func run() error {
 		return err
 	}
 
+	reg := metrics.NewRegistry()
+	gw.Instrument(reg)
+	mux := gw.Handler()
+	mux.Handle("GET /metrics", metrics.Handler(reg))
+	handler := metrics.NewHTTP(reg, "gateway", "GET /metrics").Wrap(mux)
+
 	srv := &http.Server{
 		Addr:              env.String("CLEARLINE_GATEWAY_ADDR", ":8080"),
-		Handler:           gw.Handler(),
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      produceTimeout + 10*time.Second,

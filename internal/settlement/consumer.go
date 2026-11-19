@@ -14,6 +14,7 @@ import (
 	"github.com/harshithptl/clearline/internal/dlq"
 	"github.com/harshithptl/clearline/internal/ledger"
 	"github.com/harshithptl/clearline/internal/messages"
+	"github.com/harshithptl/clearline/internal/metrics"
 )
 
 // Consumer reads the trades topic and settles each trade (SPEC 3.4 #4):
@@ -35,8 +36,9 @@ import (
 // whole stream into the DLQ. The pipeline stalls instead, and consumer lag
 // alerts fire.
 type Consumer struct {
-	cfg   ConsumerConfig
-	stats Stats
+	cfg     ConsumerConfig
+	stats   Stats
+	metrics *consumerMetrics // set by Instrument; nil records nothing
 }
 
 // ConsumerConfig configures a Consumer.
@@ -193,10 +195,12 @@ func (c *Consumer) handle(ctx context.Context, r *kgo.Record) error {
 		return c.deadLetter(ctx, r, err, 1)
 	}
 	for attempt := 1; ; attempt++ {
+		start := time.Now()
 		out, err := Settle(ctx, c.cfg.DB, trade)
 		if err == nil {
 			if out == Posted {
 				c.stats.Posted.Add(1)
+				c.observe(r, start)
 			} else {
 				c.stats.Duplicates.Add(1)
 			}
@@ -215,6 +219,18 @@ func (c *Consumer) handle(ctx context.Context, r *kgo.Record) error {
 		if err := backoff.Sleep(ctx, c.cfg.Backoff.Delay(attempt)); err != nil {
 			return err
 		}
+	}
+}
+
+// observe records the latencies of a newly posted trade.
+func (c *Consumer) observe(r *kgo.Record, start time.Time) {
+	if c.metrics == nil {
+		return
+	}
+	now := time.Now()
+	c.metrics.settle.Observe(now.Sub(start).Seconds())
+	if d, ok := metrics.Since(messages.HeaderTime(r.Headers, messages.HeaderOrderTime), now); ok {
+		c.metrics.orderToLedger.Observe(d)
 	}
 }
 

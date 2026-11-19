@@ -34,6 +34,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/shopspring/decimal"
 	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -73,6 +74,10 @@ type Adapter struct {
 	symbols map[string]SymbolSpec
 	stats   Stats
 	session atomic.Value // string
+
+	// Set by Instrument; nil records nothing.
+	submitDuration prometheus.Histogram
+	batchSize      prometheus.Histogram
 }
 
 // New validates cfg.
@@ -304,8 +309,13 @@ func (a *Adapter) process(ctx context.Context, cl *kgo.Client, adm *kadm.Client,
 			req.Orders[i] = p.request
 		}
 		cctx, cancel := context.WithTimeout(ctx, engineTimeout)
+		start := time.Now()
 		resp, err := a.cfg.Engine.Submit(cctx, req)
 		cancel()
+		if a.submitDuration != nil && err == nil {
+			a.submitDuration.Observe(time.Since(start).Seconds())
+			a.batchSize.Observe(float64(len(batch)))
+		}
 		if err != nil {
 			return fmt.Errorf("engine submit: %w", err)
 		}
@@ -425,10 +435,14 @@ func (a *Adapter) apply(p *pending, res *matcherv1.OrderResult) ([]*kgo.Record, 
 			return nil, err
 		}
 		out = append(out, &kgo.Record{
-			Topic:   a.cfg.TradesTopic,
-			Key:     []byte(trade.Symbol),
-			Value:   b,
-			Headers: p.rec.Headers, // carries trace context once Phase 3 adds it
+			Topic: a.cfg.TradesTopic,
+			Key:   []byte(trade.Symbol),
+			Value: b,
+			// The order's headers (trace context) plus its log timestamp, from
+			// which settlement measures order-to-ledger latency. Both come
+			// from the log, so a replay republishes identical headers.
+			Headers: messages.WithHeader(p.rec.Headers,
+				messages.TimeHeader(messages.HeaderOrderTime, p.rec.Timestamp)),
 		})
 	}
 	if rest := res.GetRestingQuantity(); rest > 0 {

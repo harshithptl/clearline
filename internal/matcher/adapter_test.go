@@ -178,10 +178,21 @@ func TestCrossingOrdersProduceTrades(t *testing.T) {
 	a := f.start(t, kafkatest.GroupID(t))
 	crossingFlow(t, f)
 
-	trades := decodeTrades(t, kafkatest.ReadN(t, f.trades, 3, waitLong))
+	tradeRecs := kafkatest.ReadN(t, f.trades, 3, waitLong)
+	trades := decodeTrades(t, tradeRecs)
 	requireTrade(t, trades[0], "alice", "bob", "4", "150")
 	requireTrade(t, trades[1], "alice", "bob", "6", "150")
 	requireTrade(t, trades[2], "alice", "carol", "4", "150")
+
+	// Each trade carries its taker order's log timestamp, from which
+	// settlement measures order-to-ledger latency.
+	orders := kafkatest.ReadN(t, f.orders, 4, waitLong)
+	for i, r := range tradeRecs {
+		got := messages.HeaderTime(r.Headers, messages.HeaderOrderTime)
+		if want := orders[i+1].Timestamp.Truncate(time.Microsecond); !got.Equal(want) {
+			t.Fatalf("trade %d order time %v, want %v", i, got, want)
+		}
+	}
 	for i, tr := range trades {
 		parts := strings.Split(tr.TradeID, "-")
 		if len(parts) != 4 || parts[0] != "AAPL" || parts[2] != []string{"1", "2", "3"}[i] || parts[3] != "1" {

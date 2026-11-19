@@ -22,6 +22,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/harshithptl/clearline/internal/env"
+	"github.com/harshithptl/clearline/internal/metrics"
 	"github.com/harshithptl/clearline/internal/outbox"
 )
 
@@ -61,6 +62,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	reg := metrics.NewRegistry()
+	r.Instrument(reg)
+	go metrics.Serve(ctx, env.String("CLEARLINE_METRICS_ADDR", ":9103"), reg)
+
 	slog.Info("outbox-relay running")
 	err = r.Run(ctx)
 	slog.Info("outbox-relay stopped", "published", r.Stats().Published.Load())

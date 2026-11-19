@@ -3,6 +3,9 @@ package settlement_test
 import (
 	"context"
 	"fmt"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
+	dto "github.com/prometheus/client_model/go"
 	"log/slog"
 	"math/rand/v2"
 	"strconv"
@@ -65,7 +68,7 @@ type runningConsumer struct {
 	stop func()
 }
 
-func (p pipeline) start(t *testing.T, group string, maxAttempts int) runningConsumer {
+func (p pipeline) start(t *testing.T, group string, maxAttempts int, reg ...prometheus.Registerer) runningConsumer {
 	t.Helper()
 	cl := kafkatest.NewClient(t, settlement.ConsumerClientOpts(group, p.trades)...)
 	c, err := settlement.NewConsumer(settlement.ConsumerConfig{
@@ -78,6 +81,9 @@ func (p pipeline) start(t *testing.T, group string, maxAttempts int) runningCons
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, r := range reg {
+		c.Instrument(r)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
@@ -277,4 +283,53 @@ func replay(t *testing.T, topic, group string) int {
 		t.Fatalf("replay: %v", err)
 	}
 	return n
+}
+
+// A trade carrying its order's timestamp (as the matcher adapter sets it)
+// feeds the order-to-ledger histogram; duplicates do not count twice.
+func TestConsumerRecordsOrderToLedger(t *testing.T) {
+	p := newPipeline(t)
+	seedAccounts(t, p.pool, "alice", "bob")
+	b, err := messages.EncodeTrade(trade("T1", "AAPL", "alice", "bob", 1, "150"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ordered := time.Now().Add(-250 * time.Millisecond)
+	for range 2 { // the second copy is a duplicate
+		r := &kgo.Record{Topic: p.trades, Key: []byte("AAPL"), Value: b,
+			Headers: []kgo.RecordHeader{messages.TimeHeader(messages.HeaderOrderTime, ordered)}}
+		if err := p.prod.ProduceSync(context.Background(), r).FirstErr(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reg := prometheus.NewRegistry()
+	c := p.start(t, kafkatest.GroupID(t), 5, reg)
+	waitCommitted(t, c, 2)
+
+	got := histogram(t, reg, "clearline_settlement_order_to_ledger_seconds")
+	if got.GetSampleCount() != 1 || got.GetSampleSum() < 0.25 {
+		t.Fatalf("order_to_ledger count=%d sum=%v; want 1 sample of at least 0.25s",
+			got.GetSampleCount(), got.GetSampleSum())
+	}
+	if n := histogram(t, reg, "clearline_settlement_settle_duration_seconds").GetSampleCount(); n != 1 {
+		t.Fatalf("settle duration samples = %d, want 1", n)
+	}
+	if problems, err := testutil.GatherAndLint(reg); err != nil || len(problems) > 0 {
+		t.Fatalf("promlint: %v %v", problems, err)
+	}
+}
+
+func histogram(t *testing.T, reg *prometheus.Registry, name string) *dto.Histogram {
+	t.Helper()
+	mfs, err := reg.Gather()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, mf := range mfs {
+		if mf.GetName() == name {
+			return mf.GetMetric()[0].GetHistogram()
+		}
+	}
+	t.Fatalf("%s not registered", name)
+	return nil
 }

@@ -27,10 +27,12 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/harshithptl/clearline/internal/balance"
 	"github.com/harshithptl/clearline/internal/env"
+	"github.com/harshithptl/clearline/internal/metrics"
 	"github.com/harshithptl/clearline/internal/topics"
 )
 
@@ -60,9 +62,16 @@ func run() error {
 	hub := balance.NewHub(256)
 	cons.OnApplied(hub.Publish)
 
+	reg := metrics.NewRegistry()
+	cons.Instrument(reg)
+	hub.Instrument(reg)
+	reg.MustRegister(metrics.NewLagCollector(kadm.NewClient(cl), group))
+	mux := balance.Handler(store, hub)
+	mux.Handle("GET /metrics", metrics.Handler(reg))
+
 	srv := &http.Server{
 		Addr:              env.String("CLEARLINE_BALANCE_ADDR", ":8081"),
-		Handler:           balance.Handler(store, hub),
+		Handler:           metrics.NewHTTP(reg, "balance", "GET /metrics", "GET /events").Wrap(mux),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	httpErr := make(chan error, 1)
