@@ -7,10 +7,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/harshithptl/clearline/internal/backoff"
 	"github.com/harshithptl/clearline/internal/messages"
+	"github.com/harshithptl/clearline/internal/metrics"
 )
 
 // Consumer applies ledger-events to the Store and commits offsets after each
@@ -25,6 +27,10 @@ type Consumer struct {
 	backoff backoff.Policy
 	log     *slog.Logger
 	stats   ConsumerStats
+	// Set by Instrument; nil records nothing.
+	applyDuration prometheus.Histogram
+	freshness     prometheus.Histogram
+
 	// onApplied, if set, is called with each newly applied event (not
 	// duplicates), after Valkey has it. Must not block.
 	onApplied func(messages.LedgerEvent)
@@ -115,6 +121,18 @@ func (c *Consumer) commit(recs []*kgo.Record) {
 	c.stats.Committed.Add(int64(len(recs)))
 }
 
+// observe records the latencies of a newly applied event.
+func (c *Consumer) observe(r *kgo.Record, start time.Time) {
+	if c.freshness == nil {
+		return
+	}
+	now := time.Now()
+	c.applyDuration.Observe(now.Sub(start).Seconds())
+	if d, ok := metrics.Since(messages.HeaderTime(r.Headers, messages.HeaderCommitTime), now); ok {
+		c.freshness.Observe(d)
+	}
+}
+
 // handle applies one record. It returns an error only on shutdown.
 func (c *Consumer) handle(ctx context.Context, r *kgo.Record) error {
 	ev, err := messages.DecodeLedgerEvent(r.Value)
@@ -127,10 +145,12 @@ func (c *Consumer) handle(ctx context.Context, r *kgo.Record) error {
 		return nil
 	}
 	for attempt := 1; ; attempt++ {
+		start := time.Now()
 		applied, err := c.store.Apply(ctx, ev)
 		if err == nil {
 			if applied {
 				c.stats.Applied.Add(1)
+				c.observe(r, start)
 				if c.onApplied != nil {
 					c.onApplied(ev)
 				}

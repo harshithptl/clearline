@@ -39,12 +39,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/shopspring/decimal"
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/harshithptl/clearline/internal/ledger"
 	"github.com/harshithptl/clearline/internal/matcher"
 	"github.com/harshithptl/clearline/internal/messages"
+	"github.com/harshithptl/clearline/internal/metrics"
 )
 
 // HeaderIdempotencyKey is the request header carrying the client's key.
@@ -85,6 +87,48 @@ type Config struct {
 type Gateway struct {
 	cfg     Config
 	symbols map[string]matcher.SymbolSpec
+
+	// Set by Instrument; nil records nothing.
+	produceDuration prometheus.Histogram
+	results         *prometheus.CounterVec
+}
+
+// Instrument registers the gateway's metrics on reg. Call before serving.
+//
+//	clearline_gateway_produce_duration_seconds  Kafka write until acks=all (the durable part of "order acknowledged")
+//	clearline_gateway_orders_total{result}      accepted | replayed | in_progress | rejected | unavailable
+//
+// End-to-end request latency is clearline_http_request_duration_seconds
+// (metrics.HTTP, wired in main).
+func (g *Gateway) Instrument(reg prometheus.Registerer) {
+	g.produceDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Namespace: metrics.Namespace, Subsystem: "gateway", Name: "produce_duration_seconds",
+		Help:    "Time for an order to be durably written to Kafka (acks=all).",
+		Buckets: metrics.LatencyBuckets,
+	})
+	g.results = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: metrics.Namespace, Subsystem: "gateway", Name: "orders_total",
+		Help: "POST /orders outcomes.",
+	}, []string{"result"})
+	for _, r := range []string{resultAccepted, resultReplayed, resultInProgress, resultRejected, resultUnavailable} {
+		g.results.WithLabelValues(r) // export zeros so rate() works from the start
+	}
+	reg.MustRegister(g.produceDuration, g.results)
+}
+
+// Order outcomes for clearline_gateway_orders_total.
+const (
+	resultAccepted    = "accepted"
+	resultReplayed    = "replayed"
+	resultInProgress  = "in_progress"
+	resultRejected    = "rejected"
+	resultUnavailable = "unavailable"
+)
+
+func (g *Gateway) count(result string) {
+	if g.results != nil {
+		g.results.WithLabelValues(result).Inc()
+	}
 }
 
 // New validates cfg.
@@ -120,8 +164,8 @@ func ProducerClientOpts(timeout time.Duration) []kgo.Opt {
 	}
 }
 
-// Handler returns the HTTP routes.
-func (g *Gateway) Handler() http.Handler {
+// Handler returns the HTTP routes. main adds /metrics and instrumentation.
+func (g *Gateway) Handler() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /orders", g.postOrder)
 	mux.HandleFunc("GET /symbols", g.listSymbols)
@@ -200,16 +244,19 @@ func (g *Gateway) postOrder(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	idemKey := r.Header.Get(HeaderIdempotencyKey)
 	if err := validIdempotencyKey(idemKey); err != nil {
+		g.count(resultRejected)
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	req, err := decodeRequest(w, r)
 	if err != nil {
+		g.count(resultRejected)
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	order, err := g.validate(req)
 	if err != nil {
+		g.count(resultRejected)
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
@@ -221,6 +268,7 @@ func (g *Gateway) postOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !exists {
+		g.count(resultRejected)
 		writeError(w, http.StatusUnprocessableEntity, fmt.Sprintf("unknown account %q", order.AccountID))
 		return
 	}
@@ -232,7 +280,7 @@ func (g *Gateway) postOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if existing != nil {
-		replay(w, existing, fp)
+		g.count(replay(w, existing, fp))
 		return
 	}
 
@@ -244,8 +292,12 @@ func (g *Gateway) postOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	pctx, cancel := context.WithTimeout(ctx, g.cfg.ProduceTimeout)
 	rec := &kgo.Record{Topic: g.cfg.OrdersTopic, Key: []byte(order.Symbol), Value: value}
+	start := time.Now()
 	err = g.cfg.Producer.ProduceSync(pctx, rec).FirstErr()
 	cancel()
+	if err == nil && g.produceDuration != nil {
+		g.produceDuration.Observe(time.Since(start).Seconds())
+	}
 	if err != nil {
 		// Possibly written anyway (timeout after send). Releasing is still
 		// safe: a retry writes the same order_id and the adapter drops it.
@@ -272,6 +324,7 @@ func (g *Gateway) postOrder(w http.ResponseWriter, r *http.Request) {
 	if err != nil || !ok {
 		g.cfg.Logger.Warn("idempotency entry not completed", "order_id", order.OrderID, "owned", ok, "err", err)
 	}
+	g.count(resultAccepted)
 	writeJSON(w, http.StatusAccepted, body)
 }
 
@@ -321,17 +374,20 @@ func fingerprint(o messages.ParsedOrder) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// replay answers from an existing idempotency entry.
-func replay(w http.ResponseWriter, e *entry, fp string) {
+// replay answers from an existing idempotency entry and returns the outcome.
+func replay(w http.ResponseWriter, e *entry, fp string) string {
 	switch {
 	case e.Fingerprint != fp:
 		writeError(w, http.StatusUnprocessableEntity, "Idempotency-Key was already used for a different order")
+		return resultRejected
 	case e.State == statePending:
 		w.Header().Set("Retry-After", "1")
 		writeError(w, http.StatusConflict, "a request with this Idempotency-Key is in progress")
+		return resultInProgress
 	default:
 		w.Header().Set(HeaderReplayed, "true")
 		writeJSON(w, e.Status, e.Body)
+		return resultReplayed
 	}
 }
 
@@ -345,6 +401,7 @@ func (g *Gateway) release(c *claim) {
 }
 
 func (g *Gateway) unavailable(w http.ResponseWriter, what string, err error) {
+	g.count(resultUnavailable)
 	g.cfg.Logger.Warn("order not accepted", "stage", what, "err", err)
 	w.Header().Set("Retry-After", "1")
 	writeError(w, http.StatusServiceUnavailable, what+" unavailable; order not accepted, retry with the same Idempotency-Key")

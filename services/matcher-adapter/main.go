@@ -19,12 +19,15 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/twmb/franz-go/pkg/kadm"
+	"github.com/twmb/franz-go/pkg/kgo"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
 	matcherv1 "github.com/harshithptl/clearline/gen/matcher/v1"
 	"github.com/harshithptl/clearline/internal/env"
 	"github.com/harshithptl/clearline/internal/matcher"
+	"github.com/harshithptl/clearline/internal/metrics"
 	"github.com/harshithptl/clearline/internal/topics"
 )
 
@@ -50,17 +53,30 @@ func run() error {
 	}
 	defer conn.Close()
 
+	group := env.String("CLEARLINE_ADAPTER_GROUP", "matcher-adapter")
 	a, err := matcher.New(matcher.Config{
 		Engine:      matcherv1.NewMatcherClient(conn),
 		Brokers:     env.Brokers(),
 		OrdersTopic: topics.Orders,
 		TradesTopic: topics.Trades,
-		Group:       env.String("CLEARLINE_ADAPTER_GROUP", "matcher-adapter"),
+		Group:       group,
 		Symbols:     symbols,
 	})
 	if err != nil {
 		return err
 	}
+
+	// The adapter commits progress to group without joining it; lag is
+	// still end offset minus committed offset.
+	admCl, err := kgo.NewClient(kgo.SeedBrokers(env.Brokers()...))
+	if err != nil {
+		return fmt.Errorf("kafka admin: %w", err)
+	}
+	defer admCl.Close()
+	reg := metrics.NewRegistry()
+	a.Instrument(reg)
+	reg.MustRegister(metrics.NewLagCollector(kadm.NewClient(admCl), group))
+	go metrics.Serve(ctx, env.String("CLEARLINE_METRICS_ADDR", ":9101"), reg)
 	err = a.Run(ctx)
 	s := a.Stats()
 	slog.Info("matcher-adapter stopped", "orders", s.Orders.Load(), "replayed", s.Replayed.Load(),

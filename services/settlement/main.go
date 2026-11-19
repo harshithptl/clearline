@@ -18,9 +18,11 @@ import (
 	"syscall"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/harshithptl/clearline/internal/env"
+	"github.com/harshithptl/clearline/internal/metrics"
 	"github.com/harshithptl/clearline/internal/settlement"
 	"github.com/harshithptl/clearline/internal/topics"
 )
@@ -65,6 +67,11 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	reg := metrics.NewRegistry()
+	c.Instrument(reg)
+	reg.MustRegister(metrics.NewLagCollector(kadm.NewClient(cl), group))
+	go metrics.Serve(ctx, env.String("CLEARLINE_METRICS_ADDR", ":9102"), reg)
+
 	slog.Info("settlement running", "group", group, "topic", topics.Trades)
 	err = c.Run(ctx)
 	s := c.Stats()

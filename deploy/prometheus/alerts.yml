@@ -1,0 +1,50 @@
+# SPEC 9 alerts. Unit tested in alerts_test.yml (promtool test rules).
+groups:
+  - name: clearline
+    rules:
+      - alert: ReconcilerMismatch
+        expr: clearline_reconciler_state{state="mismatch"} == 1
+        labels: {severity: critical}
+        annotations:
+          summary: "Ledger invariant broken"
+          description: "The reconciler found a mismatch (SPEC 4.2). Check /api/reconciler/status and the reconciler logs."
+
+      - alert: ReconcilerStale
+        expr: time() - clearline_reconciler_last_check_timestamp_seconds > 60
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: "Reconciler has not finished a check in over a minute"
+
+      - alert: ConsumerLagGrowing
+        # Behind by more than 1000 records and still falling further behind.
+        expr: |
+          sum by (group) (clearline_kafka_consumer_lag_records) > 1000
+          and
+          sum by (group) (deriv(clearline_kafka_consumer_lag_records[2m])) > 0
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "Consumer group {{ $labels.group }} is falling behind"
+          description: "Lag {{ $value }} records and growing."
+
+      - alert: TradesDeadLettered
+        expr: increase(clearline_settlement_trades_total{result="dead_lettered"}[10m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "Trades went to the DLQ"
+          description: "Inspect trades.dlq, fix the cause, then run cmd/dlq-replay."
+
+      - alert: OutboxBacklog
+        expr: clearline_outbox_unpublished_rows > 1000
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: "Outbox relay is not keeping up ({{ $value }} unpublished rows)"
+
+      - alert: ServiceDown
+        expr: up == 0
+        for: 30s
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.job }} is not answering scrapes"

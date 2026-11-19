@@ -3,6 +3,8 @@ package outbox
 import (
 	"context"
 	"errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"log/slog"
 	"strconv"
 	"sync"
@@ -136,6 +138,15 @@ func TestRelayPublishesEveryRowInOrder(t *testing.T) {
 		t.Fatalf("%d rows still unpublished", n)
 	}
 
+	// Every event carries its ledger commit time for the balance freshness
+	// metric: set, recent, and never in the future.
+	for _, rec := range recs {
+		at := messages.HeaderTime(rec.Headers, messages.HeaderCommitTime)
+		if at.IsZero() || time.Since(at) > time.Minute || at.After(time.Now()) {
+			t.Fatalf("event %s: commit time header %v", rec.Key, at)
+		}
+	}
+
 	// Per account (one key, so one partition), events follow trade order.
 	last := map[string]int{}
 	for _, rec := range recs {
@@ -207,4 +218,51 @@ func TestRelayStandbyTakesOver(t *testing.T) {
 			t.Fatalf("%s published %d times", id, n)
 		}
 	}
+}
+
+func TestRelayMetrics(t *testing.T) {
+	pool, topic := setup(t)
+	settleTrades(t, pool, 0, 5) // 10 outbox rows
+	r, err := New(Config{DB: pool, Client: kafkatest.NewClient(t), KafkaTopic: topic, Logger: slog.New(slog.DiscardHandler)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg := prometheus.NewRegistry()
+	r.Instrument(reg)
+	if got := gauge(t, reg, "clearline_outbox_unpublished_rows"); got != 10 {
+		t.Fatalf("backlog before running = %v, want 10", got)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- r.Run(ctx) }()
+	kafkatest.Eventually(t, waitLong, "published", func() bool { return r.Stats().Published.Load() == 10 })
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if got := gauge(t, reg, "clearline_outbox_unpublished_rows"); got != 0 {
+		t.Fatalf("backlog after = %v, want 0", got)
+	}
+	if n := testutil.CollectAndCount(reg, "clearline_outbox_batch_duration_seconds"); n != 1 {
+		t.Fatalf("batch duration series = %d", n)
+	}
+	if problems, err := testutil.GatherAndLint(reg); err != nil || len(problems) > 0 {
+		t.Fatalf("promlint: %v %v", problems, err)
+	}
+}
+
+// gauge reads one registered gauge's current value.
+func gauge(t *testing.T, reg *prometheus.Registry, name string) float64 {
+	t.Helper()
+	mfs, err := reg.Gather()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, mf := range mfs {
+		if mf.GetName() == name {
+			return mf.GetMetric()[0].GetGauge().GetValue()
+		}
+	}
+	t.Fatalf("metric %s not registered", name)
+	return 0
 }

@@ -1,0 +1,71 @@
+# promtool test rules alerts_test.yml
+rule_files: [alerts.yml]
+evaluation_interval: 15s
+
+tests:
+  - name: mismatch fires at once, clean does not
+    interval: 15s
+    input_series:
+      - series: 'clearline_reconciler_state{state="mismatch",job="reconciler"}'
+        values: '0 0 1 1'
+    alert_rule_test:
+      - {eval_time: 15s, alertname: ReconcilerMismatch, exp_alerts: []}
+      - eval_time: 30s
+        alertname: ReconcilerMismatch
+        exp_alerts:
+          - exp_labels: {severity: critical, state: mismatch, job: reconciler}
+            exp_annotations:
+              summary: "Ledger invariant broken"
+              description: "The reconciler found a mismatch (SPEC 4.2). Check /api/reconciler/status and the reconciler logs."
+
+  - name: lag that is high but shrinking does not fire
+    interval: 15s
+    input_series:
+      - series: 'clearline_kafka_consumer_lag_records{group="settlement",topic="trades",partition="0"}'
+        values: '5000-100x20'
+    alert_rule_test:
+      - {eval_time: 5m, alertname: ConsumerLagGrowing, exp_alerts: []}
+
+  - name: lag that is high and growing fires after 2m
+    interval: 15s
+    input_series:
+      - series: 'clearline_kafka_consumer_lag_records{group="settlement",topic="trades",partition="0"}'
+        values: '2000+100x30'
+    alert_rule_test:
+      - {eval_time: 1m, alertname: ConsumerLagGrowing, exp_alerts: []}
+      - eval_time: 5m
+        alertname: ConsumerLagGrowing
+        exp_alerts:
+          - exp_labels: {severity: warning, group: settlement}
+            exp_annotations:
+              summary: "Consumer group settlement is falling behind"
+              description: "Lag 4000 records and growing."
+
+  - name: one dead-lettered trade fires
+    interval: 1m
+    input_series:
+      - series: 'clearline_settlement_trades_total{result="dead_lettered",job="settlement"}'
+        values: '0 0 1 1'
+    alert_rule_test:
+      - {eval_time: 1m, alertname: TradesDeadLettered, exp_alerts: []}
+      - eval_time: 3m
+        alertname: TradesDeadLettered
+        exp_alerts:
+          - exp_labels: {severity: warning, result: dead_lettered, job: settlement}
+            exp_annotations:
+              summary: "Trades went to the DLQ"
+              description: "Inspect trades.dlq, fix the cause, then run cmd/dlq-replay."
+
+  - name: service down for 30s fires
+    interval: 15s
+    input_series:
+      - series: 'up{job="settlement",instance="settlement:9102"}'
+        values: '1 0 0 0 0'
+    alert_rule_test:
+      - {eval_time: 30s, alertname: ServiceDown, exp_alerts: []}
+      - eval_time: 60s
+        alertname: ServiceDown
+        exp_alerts:
+          - exp_labels: {severity: critical, job: settlement, instance: "settlement:9102"}
+            exp_annotations:
+              summary: "settlement is not answering scrapes"

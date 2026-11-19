@@ -37,9 +37,11 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/harshithptl/clearline/internal/backoff"
+	"github.com/harshithptl/clearline/internal/messages"
 	"github.com/harshithptl/clearline/internal/topics"
 )
 
@@ -81,6 +83,8 @@ type Stats struct {
 type Relay struct {
 	cfg   Config
 	stats Stats
+
+	batchDuration prometheus.Histogram // set by Instrument; nil records nothing
 
 	// afterProduce, if set, runs after Kafka acked a batch and before the
 	// rows are marked published. Tests use it to simulate a crash there.
@@ -174,7 +178,7 @@ func (r *Relay) lead(ctx context.Context) error {
 }
 
 const (
-	sqlClaim = `SELECT outbox_id, event_id, key, payload FROM outbox
+	sqlClaim = `SELECT outbox_id, event_id, key, payload, created_at FROM outbox
 		WHERE published_at IS NULL AND topic = $1
 		ORDER BY outbox_id LIMIT $2 FOR UPDATE`
 	sqlMarkPublished = `UPDATE outbox SET published_at = now() WHERE outbox_id = ANY($1)`
@@ -182,6 +186,7 @@ const (
 
 // publishBatch publishes one batch and returns how many rows it published.
 func (r *Relay) publishBatch(ctx context.Context, conn *pgx.Conn) (int, error) {
+	start := time.Now()
 	tx, err := conn.Begin(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("begin: %w", err)
@@ -198,21 +203,27 @@ func (r *Relay) publishBatch(ctx context.Context, conn *pgx.Conn) (int, error) {
 	)
 	for rows.Next() {
 		var (
-			id      int64
-			eventID string
-			key     string
-			payload []byte
+			id        int64
+			eventID   string
+			key       string
+			payload   []byte
+			createdAt time.Time
 		)
-		if err := rows.Scan(&id, &eventID, &key, &payload); err != nil {
+		if err := rows.Scan(&id, &eventID, &key, &payload, &createdAt); err != nil {
 			rows.Close()
 			return 0, fmt.Errorf("scan: %w", err)
 		}
 		ids = append(ids, id)
 		recs = append(recs, &kgo.Record{
-			Topic:   r.cfg.KafkaTopic,
-			Key:     []byte(key),
-			Value:   payload,
-			Headers: []kgo.RecordHeader{{Key: HeaderEventID, Value: []byte(eventID)}},
+			Topic: r.cfg.KafkaTopic,
+			Key:   []byte(key),
+			Value: payload,
+			Headers: []kgo.RecordHeader{
+				{Key: HeaderEventID, Value: []byte(eventID)},
+				// When settlement's transaction wrote the row (its start
+				// time, so freshness is measured conservatively).
+				messages.TimeHeader(messages.HeaderCommitTime, createdAt),
+			},
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -239,5 +250,8 @@ func (r *Relay) publishBatch(ctx context.Context, conn *pgx.Conn) (int, error) {
 	}
 	r.stats.Published.Add(int64(len(ids)))
 	r.stats.Batches.Add(1)
+	if r.batchDuration != nil {
+		r.batchDuration.Observe(time.Since(start).Seconds())
+	}
 	return len(ids), nil
 }

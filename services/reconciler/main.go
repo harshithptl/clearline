@@ -29,6 +29,7 @@ import (
 
 	"github.com/harshithptl/clearline/internal/balance"
 	"github.com/harshithptl/clearline/internal/env"
+	"github.com/harshithptl/clearline/internal/metrics"
 	"github.com/harshithptl/clearline/internal/reconcile"
 )
 
@@ -82,9 +83,13 @@ func run(once bool) (int, error) {
 	}
 
 	tracker := reconcile.NewTracker()
+	reg := metrics.NewRegistry()
+	tracker.Instrument(reg)
+	mux := reconcile.StatusHandler(tracker)
+	mux.Handle("GET /metrics", metrics.Handler(reg))
 	srv := &http.Server{
 		Addr:              env.String("CLEARLINE_RECONCILER_ADDR", ":8082"),
-		Handler:           reconcile.StatusHandler(tracker),
+		Handler:           metrics.NewHTTP(reg, "reconciler", "GET /metrics").Wrap(mux),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	go serve(srv)
@@ -93,13 +98,14 @@ func run(once bool) (int, error) {
 	t := time.NewTicker(interval)
 	defer t.Stop()
 	for {
+		start := time.Now()
 		rep, err := reconcile.Check(ctx, pool, store)
 		if err != nil && ctx.Err() == nil {
 			slog.Error("reconcile failed", "err", err)
-			tracker.Record(rep, err, time.Now())
+			tracker.Record(rep, err, start, time.Now())
 		} else if err == nil {
 			logReport(rep)
-			tracker.Record(rep, nil, time.Now())
+			tracker.Record(rep, nil, start, time.Now())
 		}
 		select {
 		case <-ctx.Done():

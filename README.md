@@ -79,7 +79,7 @@ Requirements: Go 1.27.4+, Docker. `make help` lists every shortcut.
 The quickest way to see it work:
 
 ```sh
-make up-all   # infrastructure + all six services + dashboard (http://localhost:3000)
+make up-all   # infrastructure + all six services + dashboard (http://localhost:3000) + Prometheus (:9090)
 make e2e      # place orders through the gateway, check ledger, outbox, balances, reconciler
 make web-e2e  # the same through a real browser (Playwright, needs `make web-install` once)
 make down     # stop everything (data kept; make reset deletes it)
@@ -172,6 +172,9 @@ web/                  React + TypeScript dashboard (Vite, Tailwind, Radix, TanSt
 test/e2e/             end-to-end test against the running stack (build tag e2e, make e2e)
 cmd/healthcheck/      tiny HTTP probe for compose healthchecks (the images have no shell)
 docs/decisions/       short design-decision notes
+docs/observability.md metrics, how the SPEC 7.1 latencies are measured, alerts
+deploy/prometheus/    scrape config, alert rules, promtool unit tests for the rules
+internal/metrics/     shared Prometheus helpers: registry, HTTP instrumentation, consumer lag collector
 ```
 
 Planned: `deploy/helm/`, `deploy/terraform/`, `loadtest/`, `chaos/`.
@@ -203,6 +206,7 @@ Progress:
 - [x] Gateway (two-layer idempotency, decision 0003)
 - [x] End-to-end: one order flows into the ledger (test/e2e, runs in CI)
 - [x] CI, linting, Dependabot, repo standards
+- [x] Prometheus metrics on every service, in-pipeline latency measurement, alert rules with tests ([observability](docs/observability.md))
 - [x] Dashboard: live balances, trade tape over SSE, reconciler status, order form ([decision 0004](docs/decisions/0004-dashboard.md))
 
 ## Design

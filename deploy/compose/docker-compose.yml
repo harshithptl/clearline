@@ -205,7 +205,28 @@ services:
       balance: {condition: service_healthy}
       reconciler: {condition: service_healthy}
 
+  # Prometheus scrapes every service's /metrics and evaluates the alert rules
+  # (deploy/prometheus). UI and query API on http://localhost:9090.
+  prometheus:
+    image: prom/prometheus:v3.16.0
+    profiles: [app]
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+    ports: ["9090:9090"]
+    volumes:
+      - ../prometheus:/etc/prometheus:ro
+      - promdata:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9090/-/ready"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
 volumes:
+  promdata:
   pgdata:
   kafkadata:
   valkeydata:

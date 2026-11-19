@@ -31,7 +31,7 @@ func TestTrackerStates(t *testing.T) {
 		{"error", reconcile.Report{}, errors.New("db down"), reconcile.StateError},
 	}
 	for _, c := range cases {
-		tr.Record(c.rep, c.err, now)
+		tr.Record(c.rep, c.err, now, now)
 		if s := tr.Last(); s.State != c.want || s.CheckedAt == nil {
 			t.Errorf("%s: state %q, want %q", c.name, s.State, c.want)
 		}
@@ -40,7 +40,7 @@ func TestTrackerStates(t *testing.T) {
 
 func TestStatusHandler(t *testing.T) {
 	tr := reconcile.NewTracker()
-	tr.Record(reconcile.Report{Accounts: 7}, nil, time.Now())
+	tr.Record(reconcile.Report{Accounts: 7}, nil, time.Now(), time.Now())
 	srv := httptest.NewServer(reconcile.StatusHandler(tr))
 	defer srv.Close()
 	resp, err := http.Get(srv.URL + "/status")
