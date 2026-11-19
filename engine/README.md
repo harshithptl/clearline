@@ -2,8 +2,13 @@
 
 The C++ matching engine, served over gRPC.
 
-`include/llb/` and `src/` are copied from LowLatencyBuffer at commit `1c5ad00`
-("feat: matching engine on the consumer thread"). Changes from the original:
+`include/llb/` and `src/` are copied from
+[LowLatencyBuffer](https://github.com/harshithptl/LowLatencyBuffer) at commit
+[`1c5ad00`](https://github.com/harshithptl/LowLatencyBuffer/commit/1c5ad00)
+("feat: matching engine on the consumer thread") on the
+[`spsc_buffer`](https://github.com/harshithptl/LowLatencyBuffer/tree/spsc_buffer) branch.
+That repo's `main` only has the slab allocator; the SPSC ring buffer, order book and
+matching engine exist only on `spsc_buffer`. Changes from the original:
 
 | Change | Why |
 |---|---|
