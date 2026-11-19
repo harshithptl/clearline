@@ -47,7 +47,7 @@ services:
   # With one broker, replication factor and min.insync.replicas are 1, so acks=all
   # means "the one broker has it". See docs/decisions/0001-single-broker-durability.md.
   kafka:
-    image: apache/kafka:4.3.2
+    image: apache/kafka:4.4.0
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
