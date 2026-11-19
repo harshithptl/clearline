@@ -79,3 +79,7 @@ sum(rate(clearline_settlement_trades_total{result="posted"}[1m]))
 # total lag per consumer group
 sum by (group) (clearline_kafka_consumer_lag_records)
 ```
+
+## Running benchmarks cleanly
+
+`cmd/loadgen` refuses to start while dashboards are connected (`clearline_balance_stream_subscribers > 0`) or anything is polling `GET /balances`. A forgotten dashboard tab once skewed a whole sweep. `-allow-observers` overrides it, and the report records the observers either way.

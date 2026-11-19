@@ -55,6 +55,7 @@ type options struct {
 	jsonOut, svgOut     string
 	scrapeWait, drain   time.Duration
 	replot              string
+	allowObservers      bool
 }
 
 func main() {
@@ -81,6 +82,7 @@ func parseFlags() (options, error) {
 	flag.StringVar(&o.svgOut, "svg", "", "write a latency vs throughput chart to this file")
 	flag.DurationVar(&o.scrapeWait, "scrape-wait", 12*time.Second, "wait after each run for Prometheus to scrape")
 	flag.DurationVar(&o.drain, "drain-timeout", 3*time.Minute, "max wait for consumer lag to reach 0 between runs")
+	flag.BoolVar(&o.allowObservers, "allow-observers", false, "run even if a dashboard or other client is reading the balance API (it skews results)")
 	flag.StringVar(&o.replot, "replot", "", "re-judge an existing report, print it, and rewrite -json / -svg; no load is sent")
 	flag.Parse()
 	if o.replot != "" {
@@ -123,6 +125,10 @@ func run(o options) error {
 	}
 
 	prom := loadgen.Prom{URL: o.prometheus, Client: &http.Client{Timeout: 10 * time.Second}}
+	observers := checkObservers(ctx, prom)
+	if observers != "none" && !o.allowObservers {
+		return fmt.Errorf("other clients are using the balance API (%s); close the dashboard or pass -allow-observers", observers)
+	}
 	client := &http.Client{
 		Timeout:   10 * time.Second,
 		Transport: &http.Transport{MaxIdleConns: o.inFlight, MaxIdleConnsPerHost: o.inFlight, IdleConnTimeout: time.Minute},
@@ -133,6 +139,7 @@ func run(o options) error {
 		Docker:     dockerInfo(ctx),
 		Commit:     gitCommit(ctx),
 		Durability: durability,
+		Observers:  observers,
 		StartedAt:  time.Now().UTC(),
 	}}
 
@@ -323,4 +330,18 @@ func replot(o options) error {
 		return nil
 	}
 	return writeSVG(o.svgOut, r)
+}
+
+// checkObservers reports clients that would compete with the run: open
+// dashboard streams, or anything polling the balance list. An open dashboard
+// once turned into a full-keyspace SCAN storm during a sweep.
+func checkObservers(ctx context.Context, prom loadgen.Prom) string {
+	now := time.Now()
+	subs, _ := prom.Query(ctx, `sum(clearline_balance_stream_subscribers)`, now)
+	lists, _ := prom.Query(ctx,
+		`sum(rate(clearline_http_request_duration_seconds_count{service="balance",route="GET /balances"}[1m]))`, now)
+	if subs == 0 && lists < 0.1 {
+		return "none"
+	}
+	return fmt.Sprintf("%.0f dashboard streams, %.1f balance list requests/s", subs, lists)
 }

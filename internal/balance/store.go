@@ -110,6 +110,12 @@ func (s *Store) Apply(ctx context.Context, ev messages.LedgerEvent) (bool, error
 		if errors.Is(err, redis.TxFailedErr) {
 			continue // someone changed the keys; read again
 		}
+		if err == nil && applied {
+			// Outside the transaction on purpose: the index is only for
+			// listing, IndexAccounts repairs it, and keeping it out keeps the
+			// transaction to one {account} slot.
+			err = s.rdb.SAdd(ctx, s.accountsKey(), ev.AccountID).Err()
+		}
 		return applied, err
 	}
 	return false, ErrContention
@@ -125,24 +131,55 @@ func parseStored(v any) (decimal.Decimal, error) {
 	return decimal.Decimal{}, fmt.Errorf("unexpected stored value %T", v)
 }
 
-// Accounts returns up to limit account ids that have cached balances,
-// sorted. It SCANs (incrementally, never blocking Valkey like KEYS), so it is
-// meant for dashboards and tools, not the hot path.
+// accountsKey is the index of accounts that have balances: a set, so
+// listing accounts costs O(accounts) instead of scanning the whole keyspace
+// (which also holds every idempotency key and event set).
+func (s *Store) accountsKey() string { return s.prefix + "accounts" }
+
+// Accounts returns up to limit account ids that have cached balances, sorted.
 func (s *Store) Accounts(ctx context.Context, limit int) ([]string, error) {
-	var out []string
-	pattern := s.prefix + "{*}:bal"
-	iter := s.rdb.Scan(ctx, 0, pattern, 500).Iterator()
-	for iter.Next(ctx) && len(out) < limit {
-		k := strings.TrimPrefix(iter.Val(), s.prefix+"{")
-		if acct, ok := strings.CutSuffix(k, "}:bal"); ok && acct != "" {
-			out = append(out, acct)
-		}
-	}
-	if err := iter.Err(); err != nil {
+	out, err := s.rdb.SMembers(ctx, s.accountsKey()).Result()
+	if err != nil {
 		return nil, fmt.Errorf("list accounts: %w", err)
 	}
 	sort.Strings(out)
+	if len(out) > limit {
+		out = out[:limit]
+	}
 	return out, nil
+}
+
+// IndexAccounts adds every account that already has a balance key to the
+// account index, scanning the keyspace once. Run at startup: it backfills
+// data written before the index existed and repairs any SADD lost in a crash.
+func (s *Store) IndexAccounts(ctx context.Context) (int, error) {
+	iter := s.rdb.Scan(ctx, 0, s.prefix+"{*}:bal", 1000).Iterator()
+	var batch []any
+	n := 0
+	flush := func() error {
+		if len(batch) == 0 {
+			return nil
+		}
+		err := s.rdb.SAdd(ctx, s.accountsKey(), batch...).Err()
+		n += len(batch)
+		batch = batch[:0]
+		return err
+	}
+	for iter.Next(ctx) {
+		k := strings.TrimPrefix(iter.Val(), s.prefix+"{")
+		if acct, ok := strings.CutSuffix(k, "}:bal"); ok && acct != "" {
+			batch = append(batch, acct)
+			if len(batch) == 500 {
+				if err := flush(); err != nil {
+					return n, err
+				}
+			}
+		}
+	}
+	if err := iter.Err(); err != nil {
+		return n, fmt.Errorf("index accounts: %w", err)
+	}
+	return n, flush()
 }
 
 // Snapshot is one account's cached state, read atomically.
