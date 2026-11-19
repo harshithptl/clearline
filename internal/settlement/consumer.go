@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -65,7 +66,7 @@ type Stats struct {
 }
 
 // maxPollRecords bounds a batch so offsets are committed regularly.
-const maxPollRecords = 500
+const maxPollRecords = 2000
 
 // ConsumerClientOpts are the client options a Consumer requires: manual
 // commits, no rebalance mid-batch, durable DLQ produces.
@@ -107,6 +108,11 @@ func (c *Consumer) Stats() *Stats { return &c.stats }
 
 // Run consumes until ctx is canceled, then commits what it finished and
 // returns nil. Any other return is a bug or a closed client.
+//
+// Each fetch is split by partition. Partitions settle concurrently, one
+// goroutine each, and each partition's records settle as one batch
+// (SettleBatch: one transaction, one commit). Offsets are committed after
+// every partition has finished, still only after the database commit.
 func (c *Consumer) Run(ctx context.Context) error {
 	cl := c.cfg.Client
 	for {
@@ -120,20 +126,82 @@ func (c *Consumer) Run(ctx context.Context) error {
 		}
 		fetches.EachError(c.logFetchError)
 
-		recs := fetches.Records()
-		done := 0
-		for _, r := range recs {
-			if err := c.handle(ctx, r); err != nil {
-				break // only on shutdown
+		var parts [][]*kgo.Record
+		fetches.EachPartition(func(p kgo.FetchTopicPartition) {
+			if len(p.Records) > 0 {
+				parts = append(parts, p.Records)
 			}
-			done++
+		})
+		done := make([][]*kgo.Record, len(parts))
+		var wg sync.WaitGroup
+		for i, recs := range parts {
+			wg.Add(1)
+			go func(i int, recs []*kgo.Record) {
+				defer wg.Done()
+				done[i] = recs[:c.handlePartition(ctx, recs)]
+			}(i, recs)
 		}
-		c.commit(recs[:done])
+		wg.Wait()
+		var ok []*kgo.Record
+		for _, d := range done {
+			ok = append(ok, d...)
+		}
+		c.commit(ok)
 		cl.AllowRebalance()
 		if ctx.Err() != nil {
 			return nil
 		}
 	}
+}
+
+// handlePartition settles one partition's records and returns how many, from
+// the start, are finished (safe to commit). Fewer than len(recs) only on
+// shutdown.
+//
+// The fast path settles them all in one SettleBatch. A batch-level failure
+// caused by a message (invalid trade, unknown account) falls back to settling
+// one record at a time, which retries and dead-letters only the bad record.
+// Infrastructure failures (Postgres down) retry the whole batch.
+func (c *Consumer) handlePartition(ctx context.Context, recs []*kgo.Record) int {
+	trades := make([]ledger.Trade, len(recs))
+	for i, r := range recs {
+		t, err := messages.DecodeTrade(r.Value)
+		if err != nil {
+			return c.handleEach(ctx, recs) // a malformed record: isolate it
+		}
+		trades[i] = t
+	}
+	for attempt := 1; ; attempt++ {
+		start := time.Now()
+		out, err := SettleBatch(ctx, c.cfg.DB, trades)
+		if err == nil {
+			c.observeBatch(recs, out, start)
+			return len(recs)
+		}
+		if ctx.Err() != nil {
+			return 0
+		}
+		if classify(err) != infrastructure {
+			c.cfg.Logger.Warn("batch failed on a message, settling one by one", "records", len(recs), "err", err)
+			return c.handleEach(ctx, recs)
+		}
+		c.stats.Retries.Add(1)
+		c.cfg.Logger.Warn("settle batch failed, retrying", "records", len(recs), "attempt", attempt, "err", err)
+		if backoff.Sleep(ctx, c.cfg.Backoff.Delay(attempt)) != nil {
+			return 0
+		}
+	}
+}
+
+// handleEach settles records one at a time (the per-record path with
+// retries and DLQ) and returns how many finished.
+func (c *Consumer) handleEach(ctx context.Context, recs []*kgo.Record) int {
+	for i, r := range recs {
+		if err := c.handle(ctx, r); err != nil {
+			return i // only on shutdown
+		}
+	}
+	return len(recs)
 }
 
 func (c *Consumer) logFetchError(topic string, partition int32, err error) {
@@ -219,6 +287,27 @@ func (c *Consumer) handle(ctx context.Context, r *kgo.Record) error {
 		if err := backoff.Sleep(ctx, c.cfg.Backoff.Delay(attempt)); err != nil {
 			return err
 		}
+	}
+}
+
+// observeBatch counts a settled batch and records its latencies.
+func (c *Consumer) observeBatch(recs []*kgo.Record, out []Outcome, start time.Time) {
+	now := time.Now()
+	for i, o := range out {
+		if o == Posted {
+			c.stats.Posted.Add(1)
+		} else {
+			c.stats.Duplicates.Add(1)
+		}
+		if o == Posted && c.metrics != nil {
+			if d, ok := metrics.Since(messages.HeaderTime(recs[i].Headers, messages.HeaderOrderTime), now); ok {
+				c.metrics.orderToLedger.Observe(d)
+			}
+		}
+	}
+	if c.metrics != nil {
+		c.metrics.settle.Observe(now.Sub(start).Seconds())
+		c.metrics.batchSize.Observe(float64(len(recs)))
 	}
 }
 
