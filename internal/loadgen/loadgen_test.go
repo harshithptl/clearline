@@ -137,3 +137,25 @@ func TestPlotSVG(t *testing.T) {
 		t.Fatal("empty report plotted")
 	}
 }
+
+func TestPlotCompare(t *testing.T) {
+	run := func(tps float64, p99 time.Duration, ok bool) loadgen.Result {
+		return loadgen.Result{SettledPerSec: tps, Sustained: ok,
+			Pipeline: loadgen.Pipeline{OrderToLedger: loadgen.Quantiles{P50: p99 / 10, P99: p99}}}
+	}
+	configs := []loadgen.Configuration{
+		{Name: "before", Report: loadgen.Report{Runs: []loadgen.Result{run(100, 80*time.Millisecond, true), run(250, 4*time.Second, false)}}},
+		{Name: "after", Report: loadgen.Report{Runs: []loadgen.Result{run(100, 20*time.Millisecond, true), run(1000, 150*time.Millisecond, true)}}},
+	}
+	var b strings.Builder
+	if err := loadgen.PlotCompare(&b, "cmp", "hw", "p99", configs); err != nil {
+		t.Fatal(err)
+	}
+	svg := b.String()
+	if strings.Count(svg, "<polyline") != 2 || !strings.Contains(svg, ">before<") || !strings.Contains(svg, ">after<") {
+		t.Fatalf("want two labeled lines:\n%s", svg)
+	}
+	if err := loadgen.PlotCompare(&b, "x", "", "p99", nil); err == nil {
+		t.Fatal("empty comparison plotted")
+	}
+}

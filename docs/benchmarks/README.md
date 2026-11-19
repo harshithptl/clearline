@@ -2,7 +2,57 @@
 
 Every number here comes with its hardware, settings and the command that produced it (CLAUDE.md, SPEC 7.4).
 
-## Baseline: 2026-11-19, Apple M4, unbatched
+## Clean ladder: 2026-11-19, Apple M4
+
+One change per step, each from a fresh stack: volumes reset, images rebuilt from that step's commit, the same sweep, and no other clients connected (`observers: none` in every report).
+
+| | |
+|---|---|
+| Hardware | Apple M4 (4 performance + 6 efficiency cores), 16 GB, macOS 15.7.3 |
+| Runtime | Docker Desktop 28.4.0 VM, 10 CPUs and 7.7 GiB. The whole stack and the load generator share this one machine. |
+| Durability (read from the running system) | Kafka `acks=all` (1 broker, replication 1); Postgres `synchronous_commit=on`, `fsync=on`; Valkey `appendfsync=always` |
+| Load | Open loop, 30 s per rate. Crossing pairs on the `LOAD` book (two orders make one trade). 100 accounts, at most 512 requests in flight. |
+
+### Step 1: baseline (commit `0095043`)
+
+One Postgres transaction per trade, one Valkey transaction per ledger event, each consumer sequential. Raw data: [results/2026-11-19-m4-clean-1-baseline.json](results/2026-11-19-m4-clean-1-baseline.json).
+
+| Trades/s offered | Settled | Ack p50 / p99 | Order to ledger p50 / p99 | Freshness p50 / p99 | Settlement lag | Balance lag | Sustained |
+|---|---|---|---|---|---|---|---|
+| 100 | 100 | 2.0 / 76.9 ms | 1.9 / 85.8 ms | 9.2 / 205 ms | 0 | 2 | **yes** |
+| 250 | 250 | 2.7 / 71.4 ms | 2.4 / 129 ms | 840 ms / 4.8 s | 0 | 1,604 | no: balance behind |
+| 500 | 500 | 3.7 / 58.8 ms | 3.7 / 415 ms | 9.0 s / >= 10 s | 1 | 23,680 | no: balance behind |
+| 750 | 683 | 4.9 / 77.8 ms | 162 ms / 3.29 s | >= 10 s | 2,148 | 38,272 | no |
+| 1000 | 527 | 8.1 / 115 ms | 8.26 s / >= 10 s | >= 10 s | 14,414 | 29,766 | no |
+| 1500 | 525 | 8.8 / 281 ms | >= 10 s | >= 10 s | 28,885 | 29,408 | no |
+| 2000 | 387 | 15.2 / 671 ms | >= 10 s | >= 10 s | 39,983 | 22,030 | no |
+
+**Sustained: 100 trades/s.** The balance service is the first bottleneck: each event is its own Valkey optimistic transaction, applied in sequence, each waiting for an fsync. Settlement alone keeps up to about 500 trades/s, and its throughput falls as offered load rises past saturation (683, then 527, 525, 387).
+
+### Step 2: + balance batching (measured at `6d7c762`; rebased onto main as `9b6cb9c`, same code)
+
+Each fetched partition is applied concurrently, as a batch: one `WATCH`/`MULTI`/`EXEC` per chunk of up to 100 accounts, with the reads pipelined. Raw data: [results/2026-11-19-m4-clean-2-balance.json](results/2026-11-19-m4-clean-2-balance.json).
+
+| Trades/s offered | Settled | Ack p50 / p99 | Order to ledger p50 / p99 | Freshness p50 / p99 | Settlement lag | Balance lag | Sustained |
+|---|---|---|---|---|---|---|---|
+| 100 | 100 | 3.1 / 94.9 ms | 2.4 / 147 ms | 11.8 / 112 ms | 0 | 0 | **yes** |
+| 250 | 250 | 7.8 / 43.3 ms | 3.2 / 401 ms | 44.0 / 130 ms | 1 | 12 | **yes** |
+| 500 | 495 | 8.1 / 67.7 ms | 60.7 / 719 ms | 44.5 / 127 ms | 149 | 46 | **yes** |
+| 750 | 731 | 4.9 / 106 ms | 101 / 711 ms | 26.1 / 97.3 ms | 196 | 44 | **yes** |
+| 1000 | 544 | 8.3 / 196 ms | 6.33 s / >= 10 s | 42.4 / 152 ms | 11,829 | 40 | no: settlement behind |
+| 1500 | 476 | 10.4 / 214 ms | >= 10 s | 51.4 / 237 ms | 28,065 | 44 | no |
+| 2000 | 444 | 14.4 / 202 ms | 9.29 s / >= 10 s | 62.6 / 201 ms | 41,689 | 62 | no |
+
+**Sustained: 731 trades/s, 7.3x the baseline.** The balance service now keeps up at every rate tested, with freshness p99 under 250 ms even at 2000 offered, and settlement is the bottleneck.
+
+**The cost:** order-to-ledger p99 rose at low rates (147 vs 86 ms at 100 trades/s, 401 vs 129 ms at 250). Order to ledger doesn't pass through the balance service at all, so this is resource contention. The busier balance service shares the same 10 CPUs and the same virtual disk (its fsyncs alongside Postgres's), and settlement's own transaction p50 went from 0.9 to 1.2 ms at 250 trades/s.
+
+![order-to-ledger p99, baseline vs balance batching](2026-11-19-m4-clean-compare-balance.svg)
+
+The next step batches settlement the same way.
+
+
+## Earlier baseline: 2026-11-19, Apple M4, unbatched (superseded)
 
 > **Superseded: measured with a dashboard tab open.** A browser tab on the dashboard stayed connected during this sweep. Its two bugs, both since fixed, added heavy competing load on Valkey:
 > - It refetched `GET /balances` on every ledger event.
