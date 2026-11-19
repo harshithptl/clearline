@@ -3,7 +3,7 @@ GOLANGCI := v2.15.0
 PROMETHEUS := prom/prometheus:v3.16.0
 
 .DEFAULT_GOAL := help
-.PHONY: help up up-all down reset migrate topics init test e2e lint vuln engine-test proto check web-install web-dev web-check web-e2e prom-check
+.PHONY: help up up-all down reset migrate topics init test e2e lint vuln engine-test proto check web-install web-dev web-check web-e2e prom-check bench
 
 help: ## list targets
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -63,5 +63,10 @@ web-e2e: ## Playwright browser test against the running stack (needs make up-all
 prom-check: ## validate Prometheus config and unit-test the alert rules (promtool)
 	docker run --rm -v "$$PWD/deploy/prometheus":/etc/prometheus:ro --entrypoint promtool $(PROMETHEUS) check config /etc/prometheus/prometheus.yml
 	docker run --rm -v "$$PWD/deploy/prometheus":/etc/prometheus:ro -w /etc/prometheus --entrypoint promtool $(PROMETHEUS) test rules alerts_test.yml
+
+bench: ## latency/throughput sweep against the running stack (make up-all); set HARDWARE="..."
+	@test -n "$(HARDWARE)" || (echo 'set HARDWARE="cpu, memory, docker resources"' && exit 1)
+	go run ./cmd/loadgen -rates $(or $(RATES),200,500,1000,1500,2000,3000) -duration $(or $(DURATION),30s) \
+		-hardware "$(HARDWARE)" -json docs/benchmarks/results/latest.json -svg docs/benchmarks/latest.svg
 
 check: lint vuln test engine-test web-check prom-check ## everything CI runs except e2e (make up-all && make e2e web-e2e)
