@@ -151,6 +151,9 @@ func parseDecimal(field, s string) (decimal.Decimal, error) {
 	return d, nil
 }
 
+// MaxOrderIDLen bounds Order.OrderID.
+const MaxOrderIDLen = 128
+
 // OrderVersion is the current Order message version.
 const OrderVersion = 1
 
@@ -163,8 +166,12 @@ const (
 // Order is a message on the orders topic (key = symbol): a limit order.
 // Quantity is a whole number of units; Price is a decimal string.
 type Order struct {
-	Version   int    `json:"version"`
-	OrderID   string `json:"order_id"` // assigned by the gateway, for tracing
+	Version int `json:"version"`
+	// OrderID is assigned by the gateway from the client's idempotency key,
+	// so a retried request carries the same id. The matcher adapter drops
+	// repeats, which makes order submission idempotent even if the gateway's
+	// idempotency cache loses a key.
+	OrderID   string `json:"order_id"`
 	AccountID string `json:"account_id"`
 	Symbol    string `json:"symbol"`
 	Side      string `json:"side"`
@@ -206,8 +213,8 @@ func DecodeOrder(b []byte) (ParsedOrder, error) {
 	if m.Version != OrderVersion {
 		return ParsedOrder{}, fmt.Errorf("%w: order version %d", ErrMalformed, m.Version)
 	}
-	if m.AccountID == "" || m.Symbol == "" {
-		return ParsedOrder{}, fmt.Errorf("%w: order missing account or symbol", ErrMalformed)
+	if m.OrderID == "" || len(m.OrderID) > MaxOrderIDLen || m.AccountID == "" || m.Symbol == "" {
+		return ParsedOrder{}, fmt.Errorf("%w: order needs order_id (at most %d bytes), account_id and symbol", ErrMalformed, MaxOrderIDLen)
 	}
 	if m.Side != SideBuy && m.Side != SideSell {
 		return ParsedOrder{}, fmt.Errorf("%w: order side %q", ErrMalformed, m.Side)

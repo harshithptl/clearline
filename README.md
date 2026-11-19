@@ -4,7 +4,7 @@ An event-driven trade settlement and double-entry ledger engine. Go services con
 
 The matching engine is the fast part: it matches an order in microseconds. The hard part is everything after a match. Every trade has to be posted to the ledger **exactly once**, never lost, with the books provably balanced, even when messages are redelivered, processes crash mid-write, or brokers restart. Clearline is built around that problem.
 
-> **Status:** in progress. Phase 1 (Postgres ledger, settlement, dedupe, invariant tests) is complete. Phase 2 (Kafka pipeline) is next. See [Roadmap](#roadmap). No performance numbers are published yet; every number will come with hardware, settings, and a script to reproduce it.
+> **Status:** in progress. Phase 1 (Postgres ledger, settlement, dedupe, invariant tests) is complete. Phase 2 (Kafka pipeline) is nearly done: every service runs and an order flows from REST into the ledger; the scripted end-to-end test is next. See [Roadmap](#roadmap). No performance numbers are published yet; every number will come with hardware, settings, and a script to reproduce it.
 
 ## How a trade flows
 
@@ -87,6 +87,7 @@ go test ./... -race
 CLEARLINE_HARNESS_SEED=7 go test ./internal/settlement -run Harness -v
 
 # run the services (each in its own terminal; Ctrl-C shuts down cleanly)
+go run ./services/gateway          # POST localhost:8080/orders -> orders
 go run ./services/matcher-adapter  # orders -> C++ engine -> trades
 go run ./services/settlement     # trades -> ledger + outbox
 go run ./services/outbox-relay   # outbox -> ledger-events
@@ -96,6 +97,22 @@ go run ./services/reconciler     # checks every 10s; -once exits 0 clean, 1 mism
 # after fixing whatever sent trades to the DLQ, replay them
 go run ./cmd/dlq-replay
 ```
+
+Placing an order (accounts must exist; the stack has no account API yet):
+
+```sh
+docker compose -f deploy/compose/docker-compose.yml exec postgres \
+  psql -U clearline -c "INSERT INTO accounts VALUES ('alice'), ('bob')"
+
+curl -i -X POST localhost:8080/orders -H 'Idempotency-Key: bob-1' \
+  -d '{"account_id":"bob","symbol":"AAPL","side":"sell","quantity":"10","price":"150.00"}'
+curl -i -X POST localhost:8080/orders -H 'Idempotency-Key: alice-1' \
+  -d '{"account_id":"alice","symbol":"AAPL","side":"buy","quantity":"10","price":"150.00"}'
+
+curl localhost:8081/balances/alice   # {"balances":{"AAPL":"10","USD":"-1500"},...}
+```
+
+Sending the same request again with the same `Idempotency-Key` returns the original 202 with `Idempotent-Replayed: true` and creates no second order ([decision 0003](docs/decisions/0003-order-idempotency.md)). The gateway is for local use; the live demo will not expose it.
 
 Services read `CLEARLINE_DATABASE_URL` and `CLEARLINE_KAFKA_BROKERS` (defaults point at the compose stack).
 
@@ -110,6 +127,8 @@ proto/                gRPC contract for the engine (integer tick prices, session
 gen/                  generated Go code from proto/ (scripts/gen-proto.sh, runs protoc in Docker)
 services/matcher-adapter/  consumes orders, calls the engine, publishes trades; rebuilds books by replay
 internal/matcher/     adapter logic: tick conversion, deterministic trade ids, replay vs live
+services/gateway/     POST /orders: validation, idempotency keys in Valkey, acks=all write to orders
+internal/gateway/     gateway handler, idempotency store (compare-and-set), account check
 cmd/migrate/          applies pending migrations (goose)
 cmd/topics/           creates Kafka topics (SPEC 3.3)
 cmd/dlq-replay/       republishes dead-lettered trades to their original topic
@@ -136,7 +155,7 @@ deploy/compose/       local Docker Compose stack: Postgres, Kafka, Valkey
 docs/decisions/       short design-decision notes
 ```
 
-Planned: `services/gateway`, `deploy/helm/`, `deploy/terraform/`, `loadtest/`, `chaos/`.
+Planned: `deploy/helm/`, `deploy/terraform/`, `loadtest/`, `chaos/`.
 
 ## Roadmap
 
@@ -162,7 +181,7 @@ Progress:
 - [x] Outbox relay (single active leader, at-least-once)
 - [x] Balance service + reconciler (all 5 invariants checked)
 - [x] C++ engine over gRPC + matcher adapter (replay-based recovery, decision 0002)
-- [ ] Gateway
+- [x] Gateway (two-layer idempotency, decision 0003)
 - [ ] End-to-end: one order flows into the ledger
 
 ## Design

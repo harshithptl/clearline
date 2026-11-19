@@ -12,6 +12,10 @@
 //	                                  then commit progress
 //	engine or Kafka error          -> return; the process restarts and replays
 //
+// Orders are deduped on order_id per symbol: the gateway derives order_id from
+// the client's idempotency key, so a retried request that reaches the log
+// twice is matched once.
+//
 // Trade ids are derived from the order's position in the log:
 // <symbol>-<partition>-<offset>-<fill number>. The engine is deterministic, so
 // replaying the same log always yields the same fills with the same ids. A
@@ -27,7 +31,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"math"
 	"sync/atomic"
 	"time"
 
@@ -58,6 +61,7 @@ type Stats struct {
 	Replayed   atomic.Int64 // orders resubmitted to rebuild the books
 	Orders     atomic.Int64 // live orders submitted
 	Rejected   atomic.Int64 // orders invalid or rejected by the engine (replay included)
+	Duplicates atomic.Int64 // orders whose order_id the book already took (replay included)
 	Trades     atomic.Int64 // trades published
 	SelfTrades atomic.Int64 // matches between one account's own orders, not published
 	CaughtUp   atomic.Bool  // replay finished on every partition
@@ -111,6 +115,10 @@ type book struct {
 	spec    SymbolSpec
 	nextID  uint64
 	resting map[uint64]*resting
+	// seen holds every order_id the book has taken. It grows by one per
+	// accepted order and is bounded by spec.MaxOrderID, since each entry
+	// also consumes an engine id.
+	seen map[string]struct{}
 }
 
 // pending is one order sent to the engine in the current batch.
@@ -247,7 +255,7 @@ func (a *Adapter) openSession(ctx context.Context) (map[string]*book, error) {
 			return nil, err
 		}
 		req.Books = append(req.Books, spec)
-		books[s.Symbol] = &book{spec: s, resting: map[uint64]*resting{}}
+		books[s.Symbol] = &book{spec: s, resting: map[uint64]*resting{}, seen: map[string]struct{}{}}
 	}
 	cctx, cancel := context.WithTimeout(ctx, engineTimeout)
 	defer cancel()
@@ -275,6 +283,10 @@ func (a *Adapter) process(ctx context.Context, cl *kgo.Client, adm *kadm.Client,
 	for _, r := range recs {
 		replay := r.Offset < committed[r.Partition]
 		p, err := a.prepare(r, books, replay)
+		if errors.Is(err, errDuplicateOrder) {
+			a.stats.Duplicates.Add(1)
+			continue
+		}
 		if err != nil {
 			a.stats.Rejected.Add(1)
 			if !replay {
@@ -318,9 +330,13 @@ func (a *Adapter) process(ctx context.Context, cl *kgo.Client, adm *kadm.Client,
 	return a.commit(ctx, adm, committed, recs)
 }
 
-// prepare validates an order and assigns its engine id. Invalid orders
-// consume no id. Validation depends only on the record and the symbol
-// config, so replay makes the same decisions.
+// errDuplicateOrder: an order_id this book has already taken.
+var errDuplicateOrder = errors.New("duplicate order_id")
+
+// prepare validates an order and assigns its engine id. Invalid and duplicate
+// orders consume no id. Every decision depends only on the record, earlier
+// records in the same partition and the symbol config, so replay makes the
+// same decisions.
 func (a *Adapter) prepare(r *kgo.Record, books map[string]*book, replay bool) (*pending, error) {
 	o, err := messages.DecodeOrder(r.Value)
 	if err != nil {
@@ -333,23 +349,24 @@ func (a *Adapter) prepare(r *kgo.Record, books map[string]*book, replay bool) (*
 	if string(r.Key) != o.Symbol {
 		return nil, fmt.Errorf("record key %q does not match symbol %q", r.Key, o.Symbol)
 	}
-	if err := ledger.ValidAccountID(o.AccountID); err != nil {
+	ticks, qty, err := b.spec.CheckOrder(o)
+	if err != nil {
 		return nil, err
 	}
-	if !o.Quantity.IsInteger() || !o.Quantity.IsPositive() || o.Quantity.GreaterThan(decimal.NewFromInt(math.MaxUint32)) {
-		return nil, fmt.Errorf("quantity %s must be a whole number from 1 to %d", o.Quantity, uint32(math.MaxUint32))
+	// Dedupe per book. A symbol's orders all sit on one partition (key =
+	// symbol), so "first copy wins" is decided in log order and replays
+	// identically. A set across books would depend on how partitions
+	// interleave, which differs between runs.
+	if _, dup := b.seen[o.OrderID]; dup {
+		return nil, fmt.Errorf("%w %q", errDuplicateOrder, o.OrderID)
 	}
-	ticks, err := b.spec.ticks(o.Price)
-	if err != nil {
-		return nil, fmt.Errorf("price %s (tick %s): %w", o.Price, b.spec.TickSize, err)
-	}
+	b.seen[o.OrderID] = struct{}{}
 	side := matcherv1.Side_SIDE_BUY
 	if o.Side == messages.SideSell {
 		side = matcherv1.Side_SIDE_SELL
 	}
 	id := b.nextID
 	b.nextID++
-	qty := uint32(o.Quantity.IntPart())
 	return &pending{
 		rec: r, order: o, book: b, id: id, qty: qty, replay: replay,
 		request: &matcherv1.Order{Symbol: o.Symbol, OrderId: id, Side: side, PriceTicks: ticks, Quantity: qty},

@@ -9,6 +9,8 @@ import (
 	"github.com/shopspring/decimal"
 
 	matcherv1 "github.com/harshithptl/clearline/gen/matcher/v1"
+	"github.com/harshithptl/clearline/internal/ledger"
+	"github.com/harshithptl/clearline/internal/messages"
 )
 
 // SymbolSpec is one tradable symbol and its book.
@@ -93,6 +95,32 @@ func (s SymbolSpec) validate() error {
 		return fmt.Errorf("symbol %s: reference price: %w", s.Symbol, err)
 	}
 	return nil
+}
+
+// CheckOrder applies the market rules for this symbol to o and returns its
+// price in ticks and its quantity. The gateway runs it to reject bad orders
+// synchronously; the adapter runs it again because the log is the source of
+// truth. It depends only on o and s, so replay makes the same decisions.
+func (s SymbolSpec) CheckOrder(o messages.ParsedOrder) (priceTicks int64, qty uint32, err error) {
+	if o.Symbol != s.Symbol {
+		return 0, 0, fmt.Errorf("order symbol %q checked against %s", o.Symbol, s.Symbol)
+	}
+	if err := ledger.ValidAccountID(o.AccountID); err != nil {
+		return 0, 0, err
+	}
+	if !o.Quantity.IsInteger() || !o.Quantity.IsPositive() || o.Quantity.GreaterThan(decimal.NewFromInt(math.MaxUint32)) {
+		return 0, 0, fmt.Errorf("quantity %s must be a whole number from 1 to %d", o.Quantity, uint32(math.MaxUint32))
+	}
+	ticks, err := s.ticks(o.Price)
+	if err != nil {
+		return 0, 0, fmt.Errorf("price %s (tick %s): %w", o.Price, s.TickSize, err)
+	}
+	ref, _ := s.ticks(s.ReferencePrice) // validated with the spec
+	if ticks < ref-int64(s.TicksEachSide) || ticks > ref+int64(s.TicksEachSide) {
+		return 0, 0, fmt.Errorf("price %s outside the book's range %s to %s", o.Price,
+			s.price(ref-int64(s.TicksEachSide)), s.price(ref+int64(s.TicksEachSide)))
+	}
+	return ticks, uint32(o.Quantity.IntPart()), nil
 }
 
 // errPrice: a price that is not a positive whole number of ticks.

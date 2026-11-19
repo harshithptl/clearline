@@ -3,6 +3,7 @@ package ledger_test
 import (
 	"errors"
 	"math/rand/v2"
+	"strings"
 	"testing"
 
 	"github.com/shopspring/decimal"
@@ -74,6 +75,9 @@ func TestBuildEntriesRejectsInvalid(t *testing.T) {
 		{"self trade", func(tr *ledger.Trade) { tr.SellerID = tr.BuyerID }},
 		{"colon in buyer", func(tr *ledger.Trade) { tr.BuyerID = "ali:ce" }},
 		{"colon in seller", func(tr *ledger.Trade) { tr.SellerID = "b:ob" }},
+		{"uppercase account", func(tr *ledger.Trade) { tr.BuyerID = "Alice" }},
+		{"space in account", func(tr *ledger.Trade) { tr.SellerID = "bo b" }},
+		{"account too long", func(tr *ledger.Trade) { tr.BuyerID = strings.Repeat("a", 65) }},
 		{"zero quantity", func(tr *ledger.Trade) { tr.Quantity = d("0") }},
 		{"negative quantity", func(tr *ledger.Trade) { tr.Quantity = d("-1") }},
 		{"zero price", func(tr *ledger.Trade) { tr.Price = d("0") }},
