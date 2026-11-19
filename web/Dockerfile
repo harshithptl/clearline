@@ -2,7 +2,7 @@
 # Build context: web/.
 #   docker build -t clearline-web:dev web
 
-FROM --platform=$BUILDPLATFORM node:24.22.2-trixie-slim AS build
+FROM --platform=$BUILDPLATFORM node:24.22.3-trixie-slim AS build
 WORKDIR /web
 COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci --no-audit --no-fund
