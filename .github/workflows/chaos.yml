@@ -1,0 +1,62 @@
+name: chaos
+
+# SPEC 5 failure tests against the full stack: about 5 minutes on a standard
+# runner, so they run on main and on demand rather than on every PR.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chaos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  chaos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: engine image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: engine/Dockerfile
+          target: runtime
+          tags: clearline-engine:dev
+          load: true
+          cache-from: type=gha,scope=engine
+      - name: services image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/docker/services.Dockerfile
+          tags: clearline:dev
+          load: true
+          cache-from: type=gha,scope=services
+      - name: web image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: web
+          tags: clearline-web:dev
+          load: true
+          cache-from: type=gha,scope=web
+      - name: start stack
+        run: docker compose -f deploy/compose/docker-compose.yml --profile app up -d --wait
+      - name: chaos
+        run: go test -tags chaos -count=1 -v -timeout 35m ./test/chaos
+        env:
+          CHAOS_REPORT: ${{ runner.temp }}/chaos.md
+      - name: report
+        if: always()
+        run: cat "${{ runner.temp }}/chaos.md" >> "$GITHUB_STEP_SUMMARY" || true
+      - name: stack logs
+        if: failure()
+        run: docker compose -f deploy/compose/docker-compose.yml --profile app logs --no-color --tail=200
