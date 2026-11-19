@@ -23,7 +23,15 @@ import (
 //
 // The seed is fixed so a failure reproduces exactly. Override with
 // CLEARLINE_HARNESS_SEED=<n> to explore other sequences.
-func TestHarnessDuplicatesNeverDoublePost(t *testing.T) {
+func TestHarnessDuplicatesNeverDoublePost(t *testing.T) { runHarness(t, 1) }
+
+// The same stream through SettleBatch: each worker takes whatever deliveries
+// are waiting (up to 25) and settles them as one transaction, concurrently
+// with the other workers. Duplicates land in the same batch, in other
+// workers' batches, and in later batches.
+func TestHarnessBatchedDuplicatesNeverDoublePost(t *testing.T) { runHarness(t, 25) }
+
+func runHarness(t *testing.T, maxBatch int) {
 	const (
 		numAccounts = 20
 		numTrades   = 500
@@ -91,22 +99,46 @@ func TestHarnessDuplicatesNeverDoublePost(t *testing.T) {
 	// so a broken Settle fails the test instead of deadlocking the feed.
 	var posted, duplicate, failed atomic.Int64
 	var firstErr atomic.Value
-	feed := make(chan ledger.Trade)
+	feed := make(chan ledger.Trade, maxBatch*workers) // buffered, so batches really form
+	var batches, biggest atomic.Int64
 	var wg sync.WaitGroup
 	for range workers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for tr := range feed {
-				out, err := settlement.Settle(context.Background(), pool, tr)
-				switch {
-				case err != nil:
-					failed.Add(1)
-					firstErr.CompareAndSwap(nil, fmt.Sprintf("%s: %v", tr.TradeID, err))
-				case out == settlement.Posted:
-					posted.Add(1)
-				default:
-					duplicate.Add(1)
+				batch := []ledger.Trade{tr}
+			fill:
+				for len(batch) < maxBatch {
+					select {
+					case more, ok := <-feed:
+						if !ok {
+							break fill
+						}
+						batch = append(batch, more)
+					default:
+						break fill
+					}
+				}
+				batches.Add(1)
+				for n := int64(len(batch)); ; {
+					cur := biggest.Load()
+					if n <= cur || biggest.CompareAndSwap(cur, n) {
+						break
+					}
+				}
+				outs, err := settleAll(pool, batch)
+				if err != nil {
+					failed.Add(int64(len(batch)))
+					firstErr.CompareAndSwap(nil, fmt.Sprintf("%s: %v", batch[0].TradeID, err))
+					continue
+				}
+				for _, out := range outs {
+					if out == settlement.Posted {
+						posted.Add(1)
+					} else {
+						duplicate.Add(1)
+					}
 				}
 			}
 		}()
@@ -118,6 +150,10 @@ func TestHarnessDuplicatesNeverDoublePost(t *testing.T) {
 	wg.Wait()
 	if n := failed.Load(); n > 0 {
 		t.Fatalf("%d deliveries failed, first: %v", n, firstErr.Load())
+	}
+	t.Logf("%d transactions, largest batch %d", batches.Load(), biggest.Load())
+	if maxBatch > 1 && biggest.Load() < 2 {
+		t.Fatal("batched mode never formed a batch; the test exercised nothing new")
 	}
 
 	// Every unique trade posted exactly once; every extra copy was skipped.
@@ -159,4 +195,13 @@ func TestHarnessDuplicatesNeverDoublePost(t *testing.T) {
 	if seen != len(expected) {
 		t.Fatalf("saw %d balances, want %d", seen, len(expected))
 	}
+}
+
+// settleAll settles a batch: one trade through Settle, more through SettleBatch.
+func settleAll(db settlement.TxBeginner, batch []ledger.Trade) ([]settlement.Outcome, error) {
+	if len(batch) == 1 {
+		out, err := settlement.Settle(context.Background(), db, batch[0])
+		return []settlement.Outcome{out}, err
+	}
+	return settlement.SettleBatch(context.Background(), db, batch)
 }
