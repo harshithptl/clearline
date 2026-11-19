@@ -7,15 +7,17 @@
 //	<prefix>{alice}:bal     hash   asset -> exact decimal string
 //	<prefix>{alice}:events  set    event_ids already applied
 //
-// Apply is an optimistic transaction (WATCH/MULTI/EXEC):
+// ApplyBatch is one optimistic transaction (WATCH/MULTI/EXEC) per chunk of
+// up to batchAccounts accounts, however many events the batch holds:
 //
-//	WATCH bal events
-//	SISMEMBER events <event_id>   already applied -> done, duplicate
-//	HMGET bal <assets>            current balances
+//	WATCH bal/events of every account in the chunk
+//	pipeline: SMISMEMBER events <ids>, HGETALL bal   per account (one round trip)
+//	compute new balances in event order, skipping ids already applied
 //	MULTI
-//	  SADD events <event_id>
-//	  HSET bal <asset> <new balance> ...
-//	EXEC                          aborts if anyone touched bal or events since WATCH
+//	  SADD events <new ids>, HSET bal <changed assets>  per account
+//	EXEC   aborts if anyone touched any watched key; then read and retry
+//
+// Apply is ApplyBatch of one event.
 //
 // The dedupe mark and the balance change commit together or not at all, so a
 // crash or a second consumer during a rebalance can never apply an event
@@ -60,75 +62,14 @@ func (s *Store) eventsKey(account string) string { return s.prefix + "{" + accou
 
 // Apply applies ev once. It returns false if ev was already applied.
 func (s *Store) Apply(ctx context.Context, ev messages.LedgerEvent) (bool, error) {
-	assets := make([]string, len(ev.Changes))
-	deltas := make([]decimal.Decimal, len(ev.Changes))
-	for i, c := range ev.Changes {
-		d, err := decimal.NewFromString(c.Amount)
-		if err != nil {
-			return false, fmt.Errorf("%w: %s amount %q", messages.ErrMalformed, c.Asset, c.Amount)
-		}
-		assets[i], deltas[i] = c.Asset, d
+	res, err := s.ApplyBatch(ctx, []messages.LedgerEvent{ev})
+	if err != nil {
+		return false, err
 	}
-	bk, ek := s.balKey(ev.AccountID), s.eventsKey(ev.AccountID)
-
-	for range maxTxAttempts {
-		applied := false
-		txf := func(tx *redis.Tx) error {
-			seen, err := tx.SIsMember(ctx, ek, ev.EventID).Result()
-			if err != nil || seen {
-				return err
-			}
-			cur, err := tx.HMGet(ctx, bk, assets...).Result()
-			if err != nil {
-				return err
-			}
-			next := map[string]decimal.Decimal{}
-			for i, a := range assets {
-				base, ok := next[a]
-				if !ok {
-					if base, err = parseStored(cur[i]); err != nil {
-						return fmt.Errorf("balance %s %s: %w", ev.AccountID, a, err)
-					}
-				}
-				next[a] = base.Add(deltas[i])
-			}
-			fields := make([]any, 0, 2*len(next))
-			for a, v := range next {
-				fields = append(fields, a, v.String())
-			}
-			_, err = tx.TxPipelined(ctx, func(p redis.Pipeliner) error {
-				p.SAdd(ctx, ek, ev.EventID)
-				p.HSet(ctx, bk, fields...)
-				return nil
-			})
-			if err == nil {
-				applied = true
-			}
-			return err
-		}
-		err := s.rdb.Watch(ctx, txf, bk, ek)
-		if errors.Is(err, redis.TxFailedErr) {
-			continue // someone changed the keys; read again
-		}
-		if err == nil && applied {
-			// Outside the transaction on purpose: the index is only for
-			// listing, IndexAccounts repairs it, and keeping it out keeps the
-			// transaction to one {account} slot.
-			err = s.rdb.SAdd(ctx, s.accountsKey(), ev.AccountID).Err()
-		}
-		return applied, err
+	if res[0] == Malformed {
+		return false, fmt.Errorf("%w: event %s has a malformed amount", messages.ErrMalformed, ev.EventID)
 	}
-	return false, ErrContention
-}
-
-func parseStored(v any) (decimal.Decimal, error) {
-	switch x := v.(type) {
-	case nil:
-		return decimal.Zero, nil
-	case string:
-		return decimal.NewFromString(x)
-	}
-	return decimal.Decimal{}, fmt.Errorf("unexpected stored value %T", v)
+	return res[0] == Applied, nil
 }
 
 // accountsKey is the index of accounts that have balances: a set, so
