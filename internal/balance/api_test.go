@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +15,7 @@ import (
 	"github.com/harshithptl/clearline/internal/balance"
 	"github.com/harshithptl/clearline/internal/kafkatest"
 	"github.com/harshithptl/clearline/internal/messages"
+	"github.com/harshithptl/clearline/internal/redistest"
 )
 
 func TestHubDropsSlowSubscriber(t *testing.T) {
@@ -79,6 +82,37 @@ func TestListBalances(t *testing.T) {
 	}
 	if a[0].Balances["USD"] != "-15.5" || a[0].Balances["AAPL"] != "2" || a[0].Events != 2 {
 		t.Fatalf("alice %+v", a[0])
+	}
+}
+
+// Listing reads the account index, not the keyspace: other keys (here a
+// stand-in for idempotency entries) are never touched, and accounts written
+// before the index existed come back after IndexAccounts.
+func TestAccountIndex(t *testing.T) {
+	rdb, prefix := redistest.New(t)
+	s := balance.NewStore(rdb, prefix)
+	ctx := context.Background()
+	for i := range 50 {
+		rdb.Set(ctx, prefix+"idem:{x}:k"+strconv.Itoa(i), "v", 0)
+	}
+	if _, err := s.Apply(ctx, event("T1:bob", "bob", "USD", "1")); err != nil {
+		t.Fatal(err)
+	}
+	// An account whose balance predates the index.
+	rdb.HSet(ctx, prefix+"{alice}:bal", "USD", "5")
+
+	got, err := s.Accounts(ctx, 10)
+	if err != nil || !slices.Equal(got, []string{"bob"}) {
+		t.Fatalf("before backfill: %v %v, want [bob]", got, err)
+	}
+	if n, err := s.IndexAccounts(ctx); err != nil || n != 2 {
+		t.Fatalf("IndexAccounts = %d, %v; want 2", n, err)
+	}
+	if got, _ := s.Accounts(ctx, 10); !slices.Equal(got, []string{"alice", "bob"}) {
+		t.Fatalf("after backfill: %v", got)
+	}
+	if got, _ := s.Accounts(ctx, 1); !slices.Equal(got, []string{"alice"}) {
+		t.Fatalf("limit 1: %v", got)
 	}
 }
 

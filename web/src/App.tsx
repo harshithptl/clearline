@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Radio, WifiOff } from 'lucide-react';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { BalancesTable } from '@/components/BalancesTable';
 import { OrderForm } from '@/components/OrderForm';
@@ -9,6 +9,7 @@ import { TradeTape } from '@/components/TradeTape';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { fetchBalances, fetchStatus, fetchSymbols, type LedgerEvent } from '@/lib/api';
+import { throttle } from '@/lib/throttle';
 import { addToTape, type Trade } from '@/lib/trades';
 import { useLedgerStream, type StreamState } from '@/lib/useLedgerStream';
 
@@ -25,9 +26,17 @@ export function App() {
   // null: the gateway is not routed here (public demo), so no order form.
   const symbols = useQuery({ queryKey: ['symbols'], queryFn: fetchSymbols, staleTime: Infinity });
 
-  const refreshBalances = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: ['balances'] });
-  }, [queryClient]);
+  // At most one balances refetch per second, and never cancel one in flight:
+  // the stream can carry hundreds of events a second.
+  const balancesRefresh = useMemo(
+    () =>
+      throttle(() => {
+        void queryClient.invalidateQueries({ queryKey: ['balances'] }, { cancelRefetch: false });
+      }, 1000),
+    [queryClient],
+  );
+  useEffect(() => balancesRefresh.cancel, [balancesRefresh]);
+  const refreshBalances = balancesRefresh.call;
   const onEvent = useCallback(
     (ev: LedgerEvent) => {
       setTape((t) => addToTape(t, ev));

@@ -4,6 +4,12 @@ Every number here comes with its hardware, settings and the command that produce
 
 ## Baseline: 2026-11-19, Apple M4, unbatched
 
+> **Superseded: measured with a dashboard tab open.** A browser tab on the dashboard stayed connected during this sweep. Its two bugs, both since fixed, added heavy competing load on Valkey:
+> - It refetched `GET /balances` on every ledger event.
+> - Each refetch scanned the whole Valkey keyspace, hundreds of thousands of keys.
+>
+> The load generator now refuses to start while any dashboard or balance-list client is connected, and records what it found. A clean rerun will replace these numbers. They are kept here because they were published.
+
 ![latency vs settled throughput](2026-11-19-m4-baseline.svg)
 
 | | |

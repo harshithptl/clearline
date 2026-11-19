@@ -25,6 +25,7 @@ type Environment struct {
 	Docker     string    `json:"docker"`   // docker info summary, if available
 	Commit     string    `json:"commit"`
 	Durability string    `json:"durability"`
+	Observers  string    `json:"observers"` // other clients of the balance API at start ("none" for a clean run)
 	StartedAt  time.Time `json:"started_at"`
 }
 
@@ -77,8 +78,8 @@ func Judge(r *Result) {
 // PrintTable writes a human-readable summary of the report.
 func (r Report) PrintTable(w io.Writer) {
 	e := r.Environment
-	fmt.Fprintf(w, "hardware:   %s\nhost:       %s\ndocker:     %s\ncommit:     %s\ndurability: %s\n\n",
-		e.Hardware, e.Host, e.Docker, e.Commit, e.Durability)
+	fmt.Fprintf(w, "hardware:   %s\nhost:       %s\ndocker:     %s\ncommit:     %s\ndurability: %s\nobservers:  %s\n\n",
+		e.Hardware, e.Host, e.Docker, e.Commit, e.Durability, e.Observers)
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', tabwriter.AlignRight)
 	fmt.Fprintln(tw, "orders/s\ttrades/s\tack p50\tack p99\to->l p50\to->l p99\tfresh p50\tfresh p99\tsettle tx p50\tsettle lag\tbalance lag\terrors\tsustained\t")
 	for _, x := range r.Runs {

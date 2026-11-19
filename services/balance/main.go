@@ -50,6 +50,11 @@ func run() error {
 	rdb := redis.NewClient(&redis.Options{Addr: env.RedisAddr()})
 	defer rdb.Close()
 	store := balance.NewStore(rdb, env.RedisPrefix())
+	indexed, err := store.IndexAccounts(ctx)
+	if err != nil {
+		return fmt.Errorf("index accounts: %w", err)
+	}
+	slog.Info("account index ready", "accounts", indexed)
 
 	group := env.String("CLEARLINE_BALANCE_GROUP", "balance")
 	opts := append([]kgo.Opt{kgo.SeedBrokers(env.Brokers()...)}, balance.ConsumerClientOpts(group, topics.LedgerEvents)...)
