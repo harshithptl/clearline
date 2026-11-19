@@ -11,7 +11,7 @@ Every number here comes with its hardware, settings and the command that produce
 | Hardware | Apple M4 (4 performance + 6 efficiency cores), 16 GB, macOS 15.7.3 |
 | Runtime | Docker Desktop 28.4.0, VM with 10 CPUs and 7.7 GiB. The whole stack (Postgres, Kafka, Valkey, C++ engine, 6 services, Prometheus) and the load generator all run on this one machine. |
 | Durability (read from the running system) | Kafka `acks=all` (1 broker, replication 1); Postgres `synchronous_commit=on`, `fsync=on`; Valkey `appendfsync=always` |
-| Code | commit `6570761`: one Postgres transaction per trade, one Valkey transaction per ledger event, gateway linger 0 |
+| Code | measured at commit `6570761`, which became `3c3d99e` when rebased (the only difference is go.mod listing `client_model` as a direct dependency). One Postgres transaction per trade, one Valkey transaction per ledger event, gateway linger 0 |
 | Load | Open loop, 30 s per rate. Crossing pairs (sell, then buy 1 unit at 100) on the `LOAD` book, so two orders make one trade. 100 accounts, at most 512 requests in flight. |
 | Raw data | [results/2026-11-19-m4-baseline.json](results/2026-11-19-m4-baseline.json) |
 
