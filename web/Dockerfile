@@ -10,7 +10,7 @@ COPY . .
 RUN npm run build
 
 # Static files are architecture independent, so only this stage is per platform.
-FROM nginxinc/nginx-unprivileged:1.30.6-alpine
+FROM nginxinc/nginx-unprivileged:1.31.7-alpine
 ENV CLEARLINE_GATEWAY_UPSTREAM=gateway:8080 \
     CLEARLINE_BALANCE_UPSTREAM=balance:8081 \
     CLEARLINE_RECONCILER_UPSTREAM=reconciler:8082 \
