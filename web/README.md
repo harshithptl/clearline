@@ -20,13 +20,13 @@ Node 24 (`.nvmrc`). Install once with `make web-install`.
 
 ## Checks
 
-| Command | What |
-|---|---|
-| `npm run typecheck` | `tsc` in strict mode with `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes` |
-| `npm run lint` | ESLint with typescript-eslint `strictTypeChecked` and the React hooks rules |
-| `npm run format:check` | Prettier, with Tailwind class ordering |
-| `npm test` | Vitest + Testing Library (jsdom): decimal math, trade tape, components |
-| `npm run e2e` | Playwright against the compose stack, through the real nginx image |
+| Command                | What                                                                                  |
+| ---------------------- | ------------------------------------------------------------------------------------- |
+| `npm run typecheck`    | `tsc` in strict mode with `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes` |
+| `npm run lint`         | ESLint with typescript-eslint `strictTypeChecked` and the React hooks rules           |
+| `npm run format:check` | Prettier, with Tailwind class ordering                                                |
+| `npm test`             | Vitest + Testing Library (jsdom): decimal math, trade tape, components                |
+| `npm run e2e`          | Playwright against the compose stack, through the real nginx image                    |
 
 `make web-check` runs all of them except e2e; CI runs every one.
 
