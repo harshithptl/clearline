@@ -1,0 +1,59 @@
+{{- if .Values.web.enabled }}
+{{- $full := include "clearline.fullname" . -}}
+# Dashboard: static build behind unprivileged nginx, proxying /api/* to the
+# services (one origin, no CORS).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $full }}-web
+  labels: {{- include "clearline.labels" . | nindent 4 }}
+    app.kubernetes.io/name: web
+spec:
+  replicas: {{ .Values.web.replicas }}
+  selector:
+    matchLabels: {{- include "clearline.selector" (dict "root" . "name" "web") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "clearline.labels" . | nindent 8 }}
+        app.kubernetes.io/name: web
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+      containers:
+        - name: web
+          image: {{ .Values.images.web.repository }}:{{ .Values.images.web.tag }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          env:
+            - {name: CLEARLINE_GATEWAY_UPSTREAM, value: {{ printf "%s-gateway:8080" $full | quote }}}
+            - {name: CLEARLINE_BALANCE_UPSTREAM, value: {{ printf "%s-balance:8081" $full | quote }}}
+            - {name: CLEARLINE_RECONCILER_UPSTREAM, value: {{ printf "%s-reconciler:8082" $full | quote }}}
+          ports: [{name: http, containerPort: 8080}]
+          readinessProbe:
+            httpGet: {path: /, port: http}
+            periodSeconds: 5
+          {{- include "clearline.containerSecurity" . | nindent 10 }}
+          resources:
+            {{- toYaml .Values.web.resources | nindent 12 }}
+          # nginx writes its rendered config, pid and temp files here; the
+          # root filesystem stays read-only.
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+            - {name: conf, mountPath: /etc/nginx/conf.d}
+            - {name: cache, mountPath: /var/cache/nginx}
+      volumes:
+        - {name: tmp, emptyDir: {}}
+        - {name: conf, emptyDir: {}}
+        - {name: cache, emptyDir: {}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $full }}-web
+  labels: {{- include "clearline.labels" . | nindent 4 }}
+spec:
+  selector: {{- include "clearline.selector" (dict "root" . "name" "web") | nindent 4 }}
+  ports: [{name: http, port: 80, targetPort: http}]
+{{- end }}

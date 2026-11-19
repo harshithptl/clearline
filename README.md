@@ -80,6 +80,7 @@ The quickest way to see it work:
 
 ```sh
 make up-all   # infrastructure + all six services + dashboard (http://localhost:3000) + Prometheus (:9090)
+make kind-e2e # the same stack on Kubernetes (kind + Helm), e2e test against it
 make e2e      # place orders through the gateway, check ledger, outbox, balances, reconciler
 make web-e2e  # the same through a real browser (Playwright, needs `make web-install` once)
 make down     # stop everything (data kept; make reset deletes it)
@@ -167,6 +168,7 @@ internal/dlq/         dead-letter record format and replay
 internal/backoff/     exponential backoff with jitter
 internal/env/         service configuration from environment variables
 deploy/compose/       Docker Compose: Postgres, Kafka, Valkey, engine; profile "app" adds every service
+deploy/helm/          Helm chart: every service, engine, dashboard, Prometheus, optional in-cluster infra
 deploy/docker/        one multi-arch distroless image holding every Go binary
 web/                  React + TypeScript dashboard (Vite, Tailwind, Radix, TanStack Query), see web/README.md
 test/e2e/             end-to-end test against the running stack (build tag e2e, make e2e)
@@ -180,7 +182,7 @@ deploy/prometheus/    scrape config, alert rules, promtool unit tests for the ru
 internal/metrics/     shared Prometheus helpers: registry, HTTP instrumentation, consumer lag collector
 ```
 
-Planned: `deploy/helm/`, `deploy/terraform/`, `loadtest/`, `chaos/`.
+
 
 ## Roadmap
 
@@ -210,6 +212,7 @@ Progress:
 - [x] End-to-end: one order flows into the ledger (test/e2e, runs in CI)
 - [x] CI, linting, Dependabot, repo standards
 - [x] Load generator and benchmark ladder: 100 to 2000 trades/s sustained via batching and per-partition concurrency ([report](docs/benchmarks/README.md))
+- [x] Helm chart, installed on kind and tested end to end in CI ([deploy/helm](deploy/helm/README.md))
 - [x] Prometheus metrics on every service, in-pipeline latency measurement, alert rules with tests ([observability](docs/observability.md))
 - [x] Dashboard: live balances, trade tape over SSE, reconciler status, order form ([decision 0004](docs/decisions/0004-dashboard.md))
 

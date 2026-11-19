@@ -8,6 +8,7 @@ package pgtest
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"os"
 	"testing"
@@ -59,9 +60,26 @@ func NewPool(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
+// NewEmptyDB returns a *sql.DB for a new database with NO migrations
+// applied, dropped on cleanup. For testing the migration runner itself.
+func NewEmptyDB(t *testing.T) *sql.DB {
+	t.Helper()
+	url, name := createDB(t, false)
+	cfg, err := pgx.ParseConfig(url)
+	if err != nil {
+		t.Fatalf("pgtest: parse url: %v", err)
+	}
+	cfg.Database = name
+	db := stdlib.OpenDB(*cfg)
+	t.Cleanup(func() { _ = db.Close() })
+	return db
+}
+
 // create makes a new database, applies migrations, and registers its drop.
 // It returns the admin URL and the new database name.
-func create(t *testing.T) (string, string) {
+func create(t *testing.T) (string, string) { return createDB(t, true) }
+
+func createDB(t *testing.T, migrate bool) (string, string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -92,6 +110,9 @@ func create(t *testing.T) (string, string) {
 	cfg, err := pgx.ParseConfig(adminURL)
 	if err != nil {
 		t.Fatalf("pgtest: parse url: %v", err)
+	}
+	if !migrate {
+		return adminURL, name
 	}
 	cfg.Database = name
 	db := stdlib.OpenDB(*cfg)

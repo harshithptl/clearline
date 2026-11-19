@@ -64,6 +64,19 @@ prom-check: ## validate Prometheus config and unit-test the alert rules (promtoo
 	docker run --rm -v "$$PWD/deploy/prometheus":/etc/prometheus:ro --entrypoint promtool $(PROMETHEUS) check config /etc/prometheus/prometheus.yml
 	docker run --rm -v "$$PWD/deploy/prometheus":/etc/prometheus:ro -w /etc/prometheus --entrypoint promtool $(PROMETHEUS) test rules alerts_test.yml
 
+helm-lint: ## lint the Helm chart (deploy/helm/clearline) and check its alert rules match deploy/prometheus
+	helm lint deploy/helm/clearline
+	@diff -q deploy/prometheus/alerts.yml deploy/helm/clearline/files/alerts.yml || (echo "run make helm-sync" && exit 1)
+
+helm-sync: ## copy deploy/prometheus/alerts.yml into the chart
+	cp deploy/prometheus/alerts.yml deploy/helm/clearline/files/alerts.yml
+
+kind-e2e: ## deploy the chart to a local kind cluster and run the e2e test against it (needs kind, helm, kubectl)
+	scripts/kind-e2e.sh
+
+kind-down: ## delete the kind cluster
+	kind delete cluster --name clearline
+
 bench: ## latency/throughput sweep against the running stack (make up-all); set HARDWARE="..."
 	@test -n "$(HARDWARE)" || (echo 'set HARDWARE="cpu, memory, docker resources"' && exit 1)
 	go run ./cmd/loadgen -rates $(or $(RATES),200,500,1000,1500,2000,3000) -duration $(or $(DURATION),30s) \

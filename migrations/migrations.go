@@ -14,14 +14,24 @@ import (
 	"fmt"
 
 	"github.com/pressly/goose/v3"
+	"github.com/pressly/goose/v3/lock"
 )
 
 //go:embed *.sql
 var files embed.FS
 
 // Apply runs all pending migrations and returns the resulting schema version.
+//
+// It holds a Postgres advisory lock (goose's session locker) while it runs,
+// so concurrent callers serialize. On Kubernetes every app pod runs migrate
+// as an init container; the first one applies, and the rest wait, then find
+// nothing to do.
 func Apply(ctx context.Context, db *sql.DB) (int64, error) {
-	p, err := goose.NewProvider(goose.DialectPostgres, db, files)
+	locker, err := lock.NewPostgresSessionLocker()
+	if err != nil {
+		return 0, fmt.Errorf("migrations: locker: %w", err)
+	}
+	p, err := goose.NewProvider(goose.DialectPostgres, db, files, goose.WithSessionLocker(locker))
 	if err != nil {
 		return 0, fmt.Errorf("migrations: %w", err)
 	}

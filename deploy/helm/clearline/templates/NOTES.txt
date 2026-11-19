@@ -1,0 +1,18 @@
+Clearline is starting. App pods wait in init (migrate, topics) until
+Postgres and Kafka are up, then become ready.
+
+  kubectl get pods -l app.kubernetes.io/instance={{ .Release.Name }}
+
+Dashboard:
+  kubectl port-forward svc/{{ include "clearline.fullname" . }}-web 3000:80
+  open http://localhost:3000
+
+Gateway / balance / Prometheus:
+  kubectl port-forward svc/{{ include "clearline.fullname" . }}-gateway 8080
+  kubectl port-forward svc/{{ include "clearline.fullname" . }}-balance 8081
+  kubectl port-forward svc/{{ include "clearline.fullname" . }}-prometheus 9090
+{{- if and .Values.infra.enabled (eq .Values.database.password "clearline") }}
+
+WARNING: using the default database password. Fine for kind; set
+existingSecret (or database.password) anywhere else.
+{{- end }}

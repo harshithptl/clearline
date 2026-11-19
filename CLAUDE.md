@@ -41,6 +41,7 @@ Event-driven trade settlement and ledger engine. Go services, Kafka, Postgres, R
 - Full stack in containers: `make up-all` (compose profile `app`, image from deploy/docker/services.Dockerfile); end-to-end: `make e2e` (test/e2e, build tag e2e)
 - Dashboard: `make web-install` once, then `make web-dev` (:5173) or `make up-all` (:3000); `make web-check` (tsc, eslint, prettier, vitest, build); `make web-e2e` (Playwright vs stack). Node 24, npm; generate lockfile changes with npm 11+ (npm 10 has a peer-resolution bug)
 - Metrics: every service serves /metrics (adapter :9101, settlement :9102, relay :9103, others on their API port); Prometheus at :9090 in `make up-all`; `make prom-check` validates config and unit-tests alert rules
+- Kubernetes: `make kind-e2e` (scripts/kind-e2e.sh: kind cluster, chart install, e2e via port-forward), `make helm-lint`, `make helm-sync` (copies alert rules into the chart), `make kind-down`
 - Load test: `make bench HARDWARE="..."` (needs `make up-all`); `go run ./cmd/loadgen -replot <json>` re-judges and redraws a saved run
 - Chaos tests: TBD
 - Local database URL: postgres://clearline:clearline@127.0.0.1:5432/clearline?sslmode=disable
