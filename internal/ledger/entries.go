@@ -4,7 +4,7 @@ package ledger
 import (
 	"errors"
 	"fmt"
-	"strings"
+	"regexp"
 
 	"github.com/shopspring/decimal"
 )
@@ -64,12 +64,19 @@ func BuildEntries(t Trade) ([]Entry, error) {
 	}, nil
 }
 
-// ValidAccountID reports whether id can be an account id: non-empty and
-// without ':', which separates trade and account in ledger event IDs
-// (migration 0003). Errors wrap ErrInvalidTrade.
+// AccountIDPattern is the account id format, also enforced by the database
+// (migration 0004): 1 to 64 lowercase letters, digits, '_' or '-'. It
+// excludes ':', which separates trade and account in ledger event IDs
+// (migration 0003), and anything that needs escaping in keys or URLs.
+const AccountIDPattern = `^[a-z0-9_-]{1,64}$`
+
+var accountIDRe = regexp.MustCompile(AccountIDPattern)
+
+// ValidAccountID reports whether id matches AccountIDPattern. Errors wrap
+// ErrInvalidTrade.
 func ValidAccountID(id string) error {
-	if id == "" || strings.Contains(id, ":") {
-		return fmt.Errorf("%w: account id %q must be non-empty without ':'", ErrInvalidTrade, id)
+	if !accountIDRe.MatchString(id) {
+		return fmt.Errorf("%w: account id %q must match %s", ErrInvalidTrade, id, AccountIDPattern)
 	}
 	return nil
 }
@@ -91,7 +98,7 @@ func validate(t Trade) error {
 	case t.BuyerID == t.SellerID:
 		return invalid(t, "buyer and seller are the same account")
 	case ValidAccountID(t.BuyerID) != nil || ValidAccountID(t.SellerID) != nil:
-		return invalid(t, "account ids must not contain ':'")
+		return invalid(t, "account ids must match "+AccountIDPattern)
 	case !t.Quantity.IsPositive():
 		return invalid(t, "quantity must be positive, got "+t.Quantity.String())
 	case !t.Price.IsPositive():

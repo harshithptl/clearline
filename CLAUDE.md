@@ -5,7 +5,7 @@ Event-driven trade settlement and ledger engine. Go services, Kafka, Postgres, R
 @docs/SPEC.md
 
 ## Current status
-- Phase 1 done (schema, invariants, BuildEntries, Settle, duplicate-delivery harness). Phase 2 in progress: infra, settlement service, outbox relay, balance service, reconciler, C++ engine + matcher adapter done. Next: gateway, then end-to-end. See SPEC section 11.
+- Phase 1 done (schema, invariants, BuildEntries, Settle, duplicate-delivery harness). Phase 2 in progress: infra, settlement service, outbox relay, balance service, reconciler, C++ engine + matcher adapter, gateway done. Next: end-to-end (service images in compose, test/e2e). See SPEC section 11.
 - Update this line as phases complete.
 
 ## Hard rules for this codebase
@@ -32,7 +32,7 @@ Event-driven trade settlement and ledger engine. Go services, Kafka, Postgres, R
 - Regenerate Go gRPC code: `scripts/gen-proto.sh` (protoc in Docker; output in `gen/`, committed)
 - Apply migrations: `go run ./cmd/migrate` (goose, idempotent)
 - Create Kafka topics: `go run ./cmd/topics` (idempotent)
-- Run services: `go run ./services/{matcher-adapter,settlement,outbox-relay,balance,reconciler}` (env `CLEARLINE_DATABASE_URL`, `CLEARLINE_KAFKA_BROKERS`, `CLEARLINE_REDIS_ADDR`); balance API on :8081; `reconciler -once` exits 0 clean / 1 mismatch / 2 lagging
+- Run services: `go run ./services/{gateway,matcher-adapter,settlement,outbox-relay,balance,reconciler}` (env `CLEARLINE_DATABASE_URL`, `CLEARLINE_KAFKA_BROKERS`, `CLEARLINE_REDIS_ADDR`); gateway POST /orders on :8080 (needs `Idempotency-Key` header); balance API on :8081; `reconciler -once` exits 0 clean / 1 mismatch / 2 lagging
 - Replay DLQ: `go run ./cmd/dlq-replay`
 - Run Go tests: `go test ./... -race` (needs compose up; each test gets its own database via `internal/pgtest` and its own topics via `internal/kafkatest`; its own Valkey key prefix via `internal/redistest`; override with `CLEARLINE_TEST_DATABASE_URL`, `CLEARLINE_TEST_KAFKA_BROKERS`, `CLEARLINE_TEST_REDIS_ADDR`, `CLEARLINE_TEST_MATCHER_ADDR`; matcher tests use the compose engine)
 - Load test: TBD

@@ -3,10 +3,12 @@ package matcher_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -77,10 +79,18 @@ func (f fixture) produceRaw(t *testing.T, key string, value []byte) {
 	}
 }
 
+// orderSeq makes order ids unique across tests (topics are per test anyway).
+var orderSeq atomic.Int64
+
 func (f fixture) order(t *testing.T, account, symbol, side, qty, price string) {
 	t.Helper()
+	f.orderWithID(t, fmt.Sprintf("o%d", orderSeq.Add(1)), account, symbol, side, qty, price)
+}
+
+func (f fixture) orderWithID(t *testing.T, id, account, symbol, side, qty, price string) {
+	t.Helper()
 	b, err := messages.EncodeOrder(messages.ParsedOrder{
-		OrderID: account + "-" + side, AccountID: account, Symbol: symbol, Side: side,
+		OrderID: id, AccountID: account, Symbol: symbol, Side: side,
 		Quantity: decimal.RequireFromString(qty), Price: decimal.RequireFromString(price),
 	})
 	if err != nil {
@@ -259,13 +269,13 @@ func TestRejectsAndSelfTrades(t *testing.T) {
 	f := newFixture(t)
 	a := f.start(t, kafkatest.GroupID(t))
 
-	f.order(t, "bob", "GOOG", messages.SideSell, "1", "150")                                                                       // unknown symbol
-	f.order(t, "bob", "AAPL", messages.SideSell, "1", "150.001")                                                                   // off tick
-	f.order(t, "bob", "AAPL", messages.SideSell, "1.5", "150")                                                                     // fractional quantity
-	f.order(t, "b:ob", "AAPL", messages.SideSell, "1", "150")                                                                      // bad account id
-	f.order(t, "bob", "AAPL", messages.SideSell, "1", "1000")                                                                      // outside the book: engine rejects
-	f.produceRaw(t, "AAPL", []byte(`{nope`))                                                                                       // malformed
-	f.produceRaw(t, "MSFT", []byte(`{"version":1,"account_id":"bob","symbol":"AAPL","side":"sell","quantity":"1","price":"150"}`)) // key mismatch
+	f.order(t, "bob", "GOOG", messages.SideSell, "1", "150")                                                                                      // unknown symbol
+	f.order(t, "bob", "AAPL", messages.SideSell, "1", "150.001")                                                                                  // off tick
+	f.order(t, "bob", "AAPL", messages.SideSell, "1.5", "150")                                                                                    // fractional quantity
+	f.order(t, "b:ob", "AAPL", messages.SideSell, "1", "150")                                                                                     // bad account id
+	f.order(t, "bob", "AAPL", messages.SideSell, "1", "1000")                                                                                     // outside the book
+	f.produceRaw(t, "AAPL", []byte(`{nope`))                                                                                                      // malformed
+	f.produceRaw(t, "MSFT", []byte(`{"version":1,"order_id":"k","account_id":"bob","symbol":"AAPL","side":"sell","quantity":"1","price":"150"}`)) // key mismatch
 	f.order(t, "alice", "AAPL", messages.SideSell, "1", "150")
 	f.order(t, "alice", "AAPL", messages.SideBuy, "1", "150") // self-match
 	f.order(t, "bob", "AAPL", messages.SideSell, "2", "150")
@@ -274,10 +284,78 @@ func TestRejectsAndSelfTrades(t *testing.T) {
 	trades := decodeTrades(t, kafkatest.ReadN(t, f.trades, 1, waitLong))
 	requireTrade(t, trades[0], "carol", "bob", "2", "150")
 	kafkatest.Eventually(t, waitLong, "all orders seen", func() bool {
-		return a.Stats().Rejected.Load() == 7 && a.Stats().Orders.Load() == 5
+		return a.Stats().Rejected.Load() == 7 && a.Stats().Orders.Load() == 4
 	})
 	if a.Stats().SelfTrades.Load() != 1 {
 		t.Fatalf("self trades = %d, want 1", a.Stats().SelfTrades.Load())
+	}
+}
+
+// The same order_id twice (a retried request that reached the log twice) is
+// matched once, live and again after a restart replays the log.
+//
+//	o1 bob   sell 5 @ 150  rests 5
+//	o1 bob   sell 5 @ 150  duplicate: dropped
+//	o2 alice buy 10 @ 150  fills 5 vs bob, rests 5
+//	(restart, replay)
+//	o3 carol sell 5 @ 150  fills 5 vs alice; bob has nothing resting
+func TestDuplicateOrderIDMatchedOnce(t *testing.T) {
+	f := newFixture(t)
+	group := kafkatest.GroupID(t)
+	first := f.start(t, group)
+	f.orderWithID(t, "dup-1", "bob", "AAPL", messages.SideSell, "5", "150")
+	f.orderWithID(t, "dup-1", "bob", "AAPL", messages.SideSell, "5", "150")
+	f.orderWithID(t, "dup-2", "alice", "AAPL", messages.SideBuy, "10", "150")
+
+	trades := decodeTrades(t, kafkatest.ReadN(t, f.trades, 1, waitLong))
+	requireTrade(t, trades[0], "alice", "bob", "5", "150")
+	kafkatest.Eventually(t, waitLong, "first adapter done", func() bool {
+		return first.Stats().Orders.Load() == 2 && first.Stats().Duplicates.Load() == 1
+	})
+	first.stop()
+
+	second := f.start(t, group)
+	kafkatest.Eventually(t, waitLong, "replay", func() bool {
+		return second.Stats().CaughtUp.Load() && second.Stats().Replayed.Load() == 2 && second.Stats().Duplicates.Load() == 1
+	})
+	f.orderWithID(t, "dup-3", "carol", "AAPL", messages.SideSell, "5", "150")
+	trades = decodeTrades(t, kafkatest.ReadN(t, f.trades, 2, waitLong))
+	requireTrade(t, trades[1], "alice", "carol", "5", "150")
+}
+
+// CheckOrder is the market-rule check the gateway shares with the adapter.
+func TestCheckOrder(t *testing.T) {
+	spec := symbols()[0]
+	spec.TicksEachSide = 100 // AAPL, tick 0.01: 149.00 to 151.00
+	ok := messages.ParsedOrder{OrderID: "o", AccountID: "alice", Symbol: "AAPL", Side: messages.SideBuy,
+		Quantity: decimal.RequireFromString("3"), Price: decimal.RequireFromString("150.25")}
+	ticks, qty, err := spec.CheckOrder(ok)
+	if err != nil || ticks != 15025 || qty != 3 {
+		t.Fatalf("CheckOrder = %d, %d, %v; want 15025, 3, nil", ticks, qty, err)
+	}
+	for name, mutate := range map[string]func(*messages.ParsedOrder){
+		"other symbol":   func(o *messages.ParsedOrder) { o.Symbol = "MSFT" },
+		"bad account":    func(o *messages.ParsedOrder) { o.AccountID = "Alice" },
+		"zero qty":       func(o *messages.ParsedOrder) { o.Quantity = decimal.Zero },
+		"fractional qty": func(o *messages.ParsedOrder) { o.Quantity = decimal.RequireFromString("1.5") },
+		"huge qty":       func(o *messages.ParsedOrder) { o.Quantity = decimal.RequireFromString("4294967296") },
+		"off tick":       func(o *messages.ParsedOrder) { o.Price = decimal.RequireFromString("150.001") },
+		"zero price":     func(o *messages.ParsedOrder) { o.Price = decimal.Zero },
+		"above range":    func(o *messages.ParsedOrder) { o.Price = decimal.RequireFromString("151.01") },
+		"below range":    func(o *messages.ParsedOrder) { o.Price = decimal.RequireFromString("148.99") },
+	} {
+		o := ok
+		mutate(&o)
+		if _, _, err := spec.CheckOrder(o); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	for _, p := range []string{"149", "151"} {
+		edge := ok
+		edge.Price = decimal.RequireFromString(p)
+		if _, _, err := spec.CheckOrder(edge); err != nil {
+			t.Errorf("edge of range %s rejected: %v", p, err)
+		}
 	}
 }
 

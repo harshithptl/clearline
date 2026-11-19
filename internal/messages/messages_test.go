@@ -2,6 +2,7 @@ package messages_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/shopspring/decimal"
@@ -106,11 +107,13 @@ func TestOrderRoundTrip(t *testing.T) {
 
 func TestDecodeOrderRejects(t *testing.T) {
 	cases := map[string]string{
-		"bad side":      `{"version":1,"account_id":"a","symbol":"AAPL","side":"hold","quantity":"1","price":"1"}`,
-		"no account":    `{"version":1,"symbol":"AAPL","side":"buy","quantity":"1","price":"1"}`,
-		"no symbol":     `{"version":1,"account_id":"a","side":"buy","quantity":"1","price":"1"}`,
-		"number qty":    `{"version":1,"account_id":"a","symbol":"AAPL","side":"buy","quantity":1,"price":"1"}`,
-		"wrong version": `{"version":9,"account_id":"a","symbol":"AAPL","side":"buy","quantity":"1","price":"1"}`,
+		"bad side":      `{"version":1,"order_id":"o","account_id":"a","symbol":"AAPL","side":"hold","quantity":"1","price":"1"}`,
+		"no order id":   `{"version":1,"account_id":"a","symbol":"AAPL","side":"buy","quantity":"1","price":"1"}`,
+		"long order id": `{"version":1,"order_id":"` + strings.Repeat("o", messages.MaxOrderIDLen+1) + `","account_id":"a","symbol":"AAPL","side":"buy","quantity":"1","price":"1"}`,
+		"no account":    `{"version":1,"order_id":"o","symbol":"AAPL","side":"buy","quantity":"1","price":"1"}`,
+		"no symbol":     `{"version":1,"order_id":"o","account_id":"a","side":"buy","quantity":"1","price":"1"}`,
+		"number qty":    `{"version":1,"order_id":"o","account_id":"a","symbol":"AAPL","side":"buy","quantity":1,"price":"1"}`,
+		"wrong version": `{"version":9,"order_id":"o","account_id":"a","symbol":"AAPL","side":"buy","quantity":"1","price":"1"}`,
 	}
 	for name, raw := range cases {
 		if _, err := messages.DecodeOrder([]byte(raw)); !errors.Is(err, messages.ErrMalformed) {

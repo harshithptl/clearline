@@ -3,6 +3,7 @@ package migrations_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -85,6 +86,21 @@ func TestAccountIDRejectsColon(t *testing.T) {
 	conn := pgtest.NewDB(t)
 	_, err := conn.Exec(context.Background(), `INSERT INTO accounts (account_id) VALUES ('b:c')`)
 	requireCode(t, err, codeCheck)
+}
+
+// Account ids follow ledger.AccountIDPattern (migration 0004).
+func TestAccountIDFormat(t *testing.T) {
+	conn := pgtest.NewDB(t)
+	for _, ok := range []string{"alice", "acct_01", "a-b", strings.Repeat("z", 64)} {
+		mustExec(t, conn, `INSERT INTO accounts (account_id) VALUES ($1)`, ok)
+	}
+	for _, bad := range []string{"", "Alice", "a b", "a.b", "a/b", "é", strings.Repeat("z", 65)} {
+		_, err := conn.Exec(context.Background(), `INSERT INTO accounts (account_id) VALUES ($1)`, bad)
+		if err == nil {
+			t.Fatalf("account id %q accepted", bad)
+		}
+		requireCode(t, err, codeCheck)
+	}
 }
 
 func TestLedgerRejectsZeroAmount(t *testing.T) {

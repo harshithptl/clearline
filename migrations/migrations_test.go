@@ -11,7 +11,7 @@ import (
 )
 
 // Latest is the highest migration number. Bump it when adding a migration.
-const latest = 3
+const latest = 4
 
 // pgtest.NewDB has already applied every migration. Applying again must be a
 // no-op that reports the same version: services call Apply on every start.
