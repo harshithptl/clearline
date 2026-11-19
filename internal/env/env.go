@@ -12,7 +12,7 @@ import (
 
 // Defaults for the local compose stack.
 const (
-	DefaultDatabaseURL = "postgres://clearline:clearline@127.0.0.1:5432/clearline?sslmode=disable"
+	DefaultDatabaseURL = "postgres://clearline:clearline@127.0.0.1:5432/clearline?sslmode=disable" //nolint:gosec // G101: local compose dev credentials, not a secret
 	DefaultBrokers     = "localhost:9092"
 	DefaultRedisAddr   = "localhost:6379"
 )

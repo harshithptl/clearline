@@ -1,6 +1,6 @@
 module github.com/harshithptl/clearline
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/jackc/pgx/v5 v5.12.0
@@ -9,6 +9,8 @@ require (
 	github.com/shopspring/decimal v1.6.0
 	github.com/twmb/franz-go v1.22.2
 	github.com/twmb/franz-go/pkg/kadm v1.19.0
+	google.golang.org/grpc v1.85.0
+	google.golang.org/protobuf v1.36.12
 )
 
 require (
@@ -28,6 +30,4 @@ require (
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20261005182115-fad411399dd8 // indirect
-	google.golang.org/grpc v1.85.0 // indirect
-	google.golang.org/protobuf v1.36.12 // indirect
 )

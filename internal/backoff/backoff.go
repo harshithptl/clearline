@@ -31,7 +31,7 @@ func (p Policy) Delay(attempt int) time.Duration {
 	if half <= 0 {
 		return d
 	}
-	return half + rand.N(half+1)
+	return half + rand.N(half+1) //nolint:gosec // G404: jitter only spreads retries; it is not a secret
 }
 
 // Sleep waits for d or until ctx is done, returning ctx.Err() in that case.

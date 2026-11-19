@@ -351,7 +351,8 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 
 func writeJSON(w http.ResponseWriter, status int, body []byte) {
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(status)
-	_, _ = w.Write(body)
+	_, _ = w.Write(body) //nolint:gosec // G705: JSON from json.Marshal, served as application/json with nosniff, never HTML
 	_, _ = io.WriteString(w, "\n")
 }

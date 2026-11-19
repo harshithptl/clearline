@@ -132,7 +132,7 @@ func DecodeLedgerEvent(b []byte) (LedgerEvent, error) {
 func strictUnmarshal(b []byte, v any) error {
 	dec := json.NewDecoder(bytes.NewReader(b))
 	if err := dec.Decode(v); err != nil {
-		return fmt.Errorf("%w: %v", ErrMalformed, err)
+		return fmt.Errorf("%w: %w", ErrMalformed, err)
 	}
 	if dec.More() {
 		return fmt.Errorf("%w: trailing data", ErrMalformed)
@@ -146,7 +146,7 @@ func parseDecimal(field, s string) (decimal.Decimal, error) {
 	}
 	d, err := decimal.NewFromString(s)
 	if err != nil {
-		return decimal.Decimal{}, fmt.Errorf("%w: %s %q: %v", ErrMalformed, field, s, err)
+		return decimal.Decimal{}, fmt.Errorf("%w: %s %q: %w", ErrMalformed, field, s, err)
 	}
 	return d, nil
 }

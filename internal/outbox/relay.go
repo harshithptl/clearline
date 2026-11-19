@@ -186,7 +186,7 @@ func (r *Relay) publishBatch(ctx context.Context, conn *pgx.Conn) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("begin: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer rollback(ctx, tx)
 
 	rows, err := tx.Query(ctx, sqlClaim, r.cfg.OutboxTopic, r.cfg.BatchSize)
 	if err != nil {

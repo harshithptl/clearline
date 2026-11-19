@@ -24,9 +24,10 @@ Event-driven trade settlement and ledger engine. Go services, Kafka, Postgres, R
 - Never use em dashes in generated text, docs, or comments.
 - Work in small increments: propose the plan, then implement one piece with tests.
 - If you are unsure about a library API or version, say so and check rather than guess.
+- Always warn before anything that could cost money (cloud resources, paid CI runners, paid APIs, domains, anything past a free tier): say what is charged, the expected amount, and how to avoid it, then wait for an explicit OK. Budget is $0.
 
 ## Commands
-(Fill in as they exist.)
+(Fill in as they exist.) `make help` lists shortcuts; `make check` runs what CI runs (.github/workflows/ci.yml).
 - Run stack locally: `docker compose -f deploy/compose/docker-compose.yml up -d --wait --build` (Postgres, Kafka KRaft, Valkey, C++ engine on :50051)
 - C++ engine tests: `docker build -f engine/Dockerfile --target test .`
 - Regenerate Go gRPC code: `scripts/gen-proto.sh` (protoc in Docker; output in `gen/`, committed)
@@ -35,6 +36,7 @@ Event-driven trade settlement and ledger engine. Go services, Kafka, Postgres, R
 - Run services: `go run ./services/{gateway,matcher-adapter,settlement,outbox-relay,balance,reconciler}` (env `CLEARLINE_DATABASE_URL`, `CLEARLINE_KAFKA_BROKERS`, `CLEARLINE_REDIS_ADDR`); gateway POST /orders on :8080 (needs `Idempotency-Key` header); balance API on :8081; `reconciler -once` exits 0 clean / 1 mismatch / 2 lagging
 - Replay DLQ: `go run ./cmd/dlq-replay`
 - Run Go tests: `go test ./... -race` (needs compose up; each test gets its own database via `internal/pgtest` and its own topics via `internal/kafkatest`; its own Valkey key prefix via `internal/redistest`; override with `CLEARLINE_TEST_DATABASE_URL`, `CLEARLINE_TEST_KAFKA_BROKERS`, `CLEARLINE_TEST_REDIS_ADDR`, `CLEARLINE_TEST_MATCHER_ADDR`; matcher tests use the compose engine)
+- Lint: `make lint` (gofmt, go vet, golangci-lint v2 in Docker, config .golangci.yml). Vulns: `make vuln`
 - Load test: TBD
 - Chaos tests: TBD
 - Local database URL: postgres://clearline:clearline@127.0.0.1:5432/clearline?sslmode=disable

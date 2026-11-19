@@ -84,7 +84,7 @@ func Settle(ctx context.Context, db TxBeginner, t ledger.Trade) (Outcome, error)
 		return 0, fmt.Errorf("settle %s: begin: %w", t.TradeID, err)
 	}
 	// Safe after Commit: it then returns ErrTxClosed, which we ignore.
-	defer tx.Rollback(ctx)
+	defer rollback(ctx, tx)
 
 	// If another transaction is inserting the same event_id right now, this
 	// blocks until that one commits (then 0 rows) or rolls back (then 1 row).
@@ -118,7 +118,7 @@ func execBatch(ctx context.Context, tx pgx.Tx, batch *pgx.Batch) error {
 	results := tx.SendBatch(ctx, batch)
 	for range batch.Len() {
 		if _, err := results.Exec(); err != nil {
-			results.Close()
+			_ = results.Close() // the Exec error above is the one that matters
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.Code == fkViolation {
 				return fmt.Errorf("%w: %s", ErrUnknownAccount, pgErr.Detail)

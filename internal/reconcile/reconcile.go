@@ -79,7 +79,7 @@ func Check(ctx context.Context, pool *pgxpool.Pool, store *balance.Store) (Repor
 	if err != nil {
 		return Report{}, fmt.Errorf("reconcile: begin: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer rollback(ctx, tx)
 
 	rep := Report{Accounts: len(accounts)}
 	if rep.Ledger, err = invariants.CheckAll(ctx, tx); err != nil {
