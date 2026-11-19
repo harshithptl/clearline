@@ -6,7 +6,7 @@ An event-driven trade settlement and double-entry ledger engine. Go services con
 
 The matching engine is the fast part: it matches an order in microseconds. The hard part is everything after a match. Every trade has to be posted to the ledger **exactly once**, never lost, with the books provably balanced, even when messages are redelivered, processes crash mid-write, or brokers restart. Clearline is built around that problem.
 
-> **Status:** Phases 1 and 2 are complete: the full pipeline runs in Docker Compose and an automated end-to-end test drives an order from REST into the ledger on every CI run. Phase 3 (observability, load and chaos tests) is next. See [Roadmap](#roadmap). No performance numbers are published yet; every number will come with hardware, settings, and a script to reproduce it.
+> **Status:** Phases 1 and 2 are complete: the full pipeline runs in Docker Compose and an automated end-to-end test drives an order from REST into the ledger on every CI run. Phase 3 (observability, load and chaos tests) is next. See [Roadmap](#roadmap). First baseline benchmark: [docs/benchmarks](docs/benchmarks/README.md) (every number with hardware, settings and the command to reproduce it).
 
 ![Clearline dashboard: live balances, order form, trade tape](docs/images/dashboard.png)
 
@@ -172,6 +172,9 @@ web/                  React + TypeScript dashboard (Vite, Tailwind, Radix, TanSt
 test/e2e/             end-to-end test against the running stack (build tag e2e, make e2e)
 cmd/healthcheck/      tiny HTTP probe for compose healthchecks (the images have no shell)
 docs/decisions/       short design-decision notes
+docs/benchmarks/      benchmark reports with hardware, settings, raw JSON and charts
+cmd/loadgen/          open-loop load generator (make bench)
+internal/loadgen/     schedule, exact percentiles, Prometheus queries, verdict, SVG chart
 docs/observability.md metrics, how the SPEC 7.1 latencies are measured, alerts
 deploy/prometheus/    scrape config, alert rules, promtool unit tests for the rules
 internal/metrics/     shared Prometheus helpers: registry, HTTP instrumentation, consumer lag collector
@@ -206,6 +209,7 @@ Progress:
 - [x] Gateway (two-layer idempotency, decision 0003)
 - [x] End-to-end: one order flows into the ledger (test/e2e, runs in CI)
 - [x] CI, linting, Dependabot, repo standards
+- [x] Load generator and first baseline benchmark ([report](docs/benchmarks/README.md))
 - [x] Prometheus metrics on every service, in-pipeline latency measurement, alert rules with tests ([observability](docs/observability.md))
 - [x] Dashboard: live balances, trade tape over SSE, reconciler status, order form ([decision 0004](docs/decisions/0004-dashboard.md))
 

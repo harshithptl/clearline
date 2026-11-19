@@ -50,20 +50,25 @@ type Report struct {
 }
 
 // Judge decides whether the system sustained the run's rate, by SPEC 2.2's
-// definition: throughput held without consumer lag growing. Concretely:
-// settled at least 95% of the target trades per second, and settlement
-// finished the window less than one second's worth of trades behind.
+// definition: throughput held without consumer lag growing, for every
+// consumer on the path. Concretely:
+//   - no gateway errors
+//   - settled at least 95% of the target trades per second
+//   - settlement ended the window less than one second of trades behind
+//   - the balance service ended it less than one second of ledger events
+//     behind (two events per trade)
 func Judge(r *Result) {
 	target := r.Settings.TradesPerSec
 	got := r.SettledPerSec
-	lagEnd := r.Pipeline.SettlementLag.End
 	switch {
 	case r.Ack.Errors > 0:
 		r.Sustained, r.Explanation = false, fmt.Sprintf("%d gateway errors", r.Ack.Errors)
 	case got < 0.95*target:
 		r.Sustained, r.Explanation = false, fmt.Sprintf("settled %.0f/s of %.0f/s target", got, target)
-	case lagEnd > target:
-		r.Sustained, r.Explanation = false, fmt.Sprintf("settlement %.0f records behind at the end", lagEnd)
+	case r.Pipeline.SettlementLag.End > target:
+		r.Sustained, r.Explanation = false, fmt.Sprintf("settlement %.0f trades behind", r.Pipeline.SettlementLag.End)
+	case r.Pipeline.BalanceLag.End > 2*target:
+		r.Sustained, r.Explanation = false, fmt.Sprintf("balance %.0f events behind", r.Pipeline.BalanceLag.End)
 	default:
 		r.Sustained, r.Explanation = true, "throughput held, lag bounded"
 	}
@@ -75,14 +80,14 @@ func (r Report) PrintTable(w io.Writer) {
 	fmt.Fprintf(w, "hardware:   %s\nhost:       %s\ndocker:     %s\ncommit:     %s\ndurability: %s\n\n",
 		e.Hardware, e.Host, e.Docker, e.Commit, e.Durability)
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', tabwriter.AlignRight)
-	fmt.Fprintln(tw, "orders/s\ttrades/s\tack p50\tack p99\tack p99.9\to->l p50\to->l p99\tfresh p99\tsettle tx p50\tlag max\terrors\tsustained\t")
+	fmt.Fprintln(tw, "orders/s\ttrades/s\tack p50\tack p99\to->l p50\to->l p99\tfresh p50\tfresh p99\tsettle tx p50\tsettle lag\tbalance lag\terrors\tsustained\t")
 	for _, x := range r.Runs {
 		p := x.Pipeline
-		fmt.Fprintf(tw, "%.0f\t%.0f\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%.0f\t%d\t%s\t\n",
+		fmt.Fprintf(tw, "%.0f\t%.0f\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%.0f\t%.0f\t%d\t%s\t\n",
 			x.Settings.OrdersPerSec, x.SettledPerSec,
-			ms(x.Ack.P50), ms(x.Ack.P99), ms(x.Ack.P999),
-			ms(p.OrderToLedger.P50), ms(p.OrderToLedger.P99), ms(p.Freshness.P99),
-			ms(p.SettleTx.P50), p.SettlementLag.Max, x.Ack.Errors, yesNo(x))
+			ms(x.Ack.P50), ms(x.Ack.P99),
+			ms(p.OrderToLedger.P50), ms(p.OrderToLedger.P99), ms(p.Freshness.P50), ms(p.Freshness.P99),
+			ms(p.SettleTx.P50), p.SettlementLag.End, p.BalanceLag.End, x.Ack.Errors, yesNo(x))
 	}
 	_ = tw.Flush()
 	for _, x := range r.Runs {
@@ -93,7 +98,14 @@ func (r Report) PrintTable(w io.Writer) {
 	}
 }
 
-func ms(d time.Duration) string { return fmt.Sprintf("%.1fms", float64(d)/float64(time.Millisecond)) }
+// ms formats a latency; values at the top histogram bucket (10 s) are shown
+// as a lower bound.
+func ms(d time.Duration) string {
+	if d >= 10*time.Second-time.Millisecond {
+		return ">=10s"
+	}
+	return fmt.Sprintf("%.1fms", float64(d)/float64(time.Millisecond))
+}
 
 func yesNo(r Result) string {
 	if r.Sustained {

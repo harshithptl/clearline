@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 440" font-family="system-ui, sans-serif" font-size="12">
+<rect width="760" height="440" fill="#ffffff"/>
+<text x="70" y="24" font-size="15" font-weight="600" fill="#1c1c1a">Clearline: latency vs settled throughput</text>
+<text x="70" y="42" font-size="11" fill="#6b6b66">Apple M4 (4P+6E cores), 16 GB, macOS 15.7.3; stack and load generator on the same machine; Docker Desktop V...</text>
+<line x1="70" x2="570.0" y1="384.0" y2="384.0" stroke="#d8d8d4"/>
+<text x="62" y="388.0" text-anchor="end" fill="#6b6b66">1ms</text>
+<line x1="70" x2="570.0" y1="359.8" y2="359.8" stroke="#ececea"/>
+<text x="62" y="363.8" text-anchor="end" fill="#6b6b66">2ms</text>
+<line x1="70" x2="570.0" y1="327.7" y2="327.7" stroke="#ececea"/>
+<text x="62" y="331.7" text-anchor="end" fill="#6b6b66">5ms</text>
+<line x1="70" x2="570.0" y1="303.5" y2="303.5" stroke="#d8d8d4"/>
+<text x="62" y="307.5" text-anchor="end" fill="#6b6b66">10ms</text>
+<line x1="70" x2="570.0" y1="279.3" y2="279.3" stroke="#ececea"/>
+<text x="62" y="283.3" text-anchor="end" fill="#6b6b66">20ms</text>
+<line x1="70" x2="570.0" y1="247.2" y2="247.2" stroke="#ececea"/>
+<text x="62" y="251.2" text-anchor="end" fill="#6b6b66">50ms</text>
+<line x1="70" x2="570.0" y1="223.0" y2="223.0" stroke="#d8d8d4"/>
+<text x="62" y="227.0" text-anchor="end" fill="#6b6b66">100ms</text>
+<line x1="70" x2="570.0" y1="198.8" y2="198.8" stroke="#ececea"/>
+<text x="62" y="202.8" text-anchor="end" fill="#6b6b66">200ms</text>
+<line x1="70" x2="570.0" y1="166.7" y2="166.7" stroke="#ececea"/>
+<text x="62" y="170.7" text-anchor="end" fill="#6b6b66">500ms</text>
+<line x1="70" x2="570.0" y1="142.5" y2="142.5" stroke="#d8d8d4"/>
+<text x="62" y="146.5" text-anchor="end" fill="#6b6b66">1s</text>
+<line x1="70" x2="570.0" y1="118.3" y2="118.3" stroke="#ececea"/>
+<text x="62" y="122.3" text-anchor="end" fill="#6b6b66">2s</text>
+<line x1="70" x2="570.0" y1="86.2" y2="86.2" stroke="#ececea"/>
+<text x="62" y="90.2" text-anchor="end" fill="#6b6b66">5s</text>
+<line x1="70" x2="570.0" y1="62.0" y2="62.0" stroke="#d8d8d4"/>
+<text x="62" y="66.0" text-anchor="end" fill="#6b6b66">10s</text>
+<line x1="70.0" x2="70.0" y1="62" y2="384.0" stroke="#ececea"/>
+<text x="70.0" y="402.0" text-anchor="middle" fill="#6b6b66">0</text>
+<line x1="170.0" x2="170.0" y1="62" y2="384.0" stroke="#ececea"/>
+<text x="170.0" y="402.0" text-anchor="middle" fill="#6b6b66">200</text>
+<line x1="270.0" x2="270.0" y1="62" y2="384.0" stroke="#ececea"/>
+<text x="270.0" y="402.0" text-anchor="middle" fill="#6b6b66">400</text>
+<line x1="370.0" x2="370.0" y1="62" y2="384.0" stroke="#ececea"/>
+<text x="370.0" y="402.0" text-anchor="middle" fill="#6b6b66">600</text>
+<line x1="470.0" x2="470.0" y1="62" y2="384.0" stroke="#ececea"/>
+<text x="470.0" y="402.0" text-anchor="middle" fill="#6b6b66">800</text>
+<line x1="570.0" x2="570.0" y1="62" y2="384.0" stroke="#ececea"/>
+<text x="570.0" y="402.0" text-anchor="middle" fill="#6b6b66">1000</text>
+<text x="320.0" y="426" text-anchor="middle" fill="#1c1c1a">settled trades per second</text>
+<text transform="translate(18 223.0) rotate(-90)" text-anchor="middle" fill="#1c1c1a">latency (log scale)</text>
+<polyline fill="none" stroke="#2f6fdb" stroke-width="2" points="120.0,352.5 195.0,358.5 320.0,355.2 442.8,287.6 402.8,107.6 332.6,80.8 289.2,62.0"/>
+<circle cx="120.0" cy="352.5" r="3.5" fill="#2f6fdb" stroke="#2f6fdb" stroke-width="1.5"/>
+<circle cx="195.0" cy="358.5" r="3.5" fill="#2f6fdb" stroke="#2f6fdb" stroke-width="1.5"/>
+<circle cx="320.0" cy="355.2" r="3.5" fill="#ffffff" stroke="#2f6fdb" stroke-width="1.5"/>
+<circle cx="442.8" cy="287.6" r="3.5" fill="#ffffff" stroke="#2f6fdb" stroke-width="1.5"/>
+<circle cx="402.8" cy="107.6" r="3.5" fill="#ffffff" stroke="#2f6fdb" stroke-width="1.5"/>
+<circle cx="332.6" cy="80.8" r="3.5" fill="#ffffff" stroke="#2f6fdb" stroke-width="1.5"/>
+<circle cx="289.2" cy="62.0" r="3.5" fill="#ffffff" stroke="#2f6fdb" stroke-width="1.5"/>
+<line x1="586.0" x2="608.0" y1="72.0" y2="72.0" stroke="#2f6fdb" stroke-width="2"/>
+<text x="614.0" y="76.0" fill="#1c1c1a">order to ledger p50</text>
+<polyline fill="none" stroke="#d1495b" stroke-width="2" points="120.0,278.1 195.0,245.1 320.0,192.2 442.8,136.1 402.8,62.8 332.6,62.0 289.2,62.0"/>
+<circle cx="120.0" cy="278.1" r="3.5" fill="#d1495b" stroke="#d1495b" stroke-width="1.5"/>
+<circle cx="195.0" cy="245.1" r="3.5" fill="#d1495b" stroke="#d1495b" stroke-width="1.5"/>
+<circle cx="320.0" cy="192.2" r="3.5" fill="#ffffff" stroke="#d1495b" stroke-width="1.5"/>
+<circle cx="442.8" cy="136.1" r="3.5" fill="#ffffff" stroke="#d1495b" stroke-width="1.5"/>
+<circle cx="402.8" cy="62.8" r="3.5" fill="#ffffff" stroke="#d1495b" stroke-width="1.5"/>
+<circle cx="332.6" cy="62.0" r="3.5" fill="#ffffff" stroke="#d1495b" stroke-width="1.5"/>
+<circle cx="289.2" cy="62.0" r="3.5" fill="#ffffff" stroke="#d1495b" stroke-width="1.5"/>
+<line x1="586.0" x2="608.0" y1="92.0" y2="92.0" stroke="#d1495b" stroke-width="2"/>
+<text x="614.0" y="96.0" fill="#1c1c1a">order to ledger p99</text>
+<polyline fill="none" stroke="#6b6b66" stroke-width="2" stroke-dasharray="5 4" points="120.0,265.1 195.0,234.3 320.0,217.0 442.8,194.6 402.8,193.5 332.6,185.1 289.2,195.3"/>
+<circle cx="120.0" cy="265.1" r="3.5" fill="#6b6b66" stroke="#6b6b66" stroke-width="1.5"/>
+<circle cx="195.0" cy="234.3" r="3.5" fill="#6b6b66" stroke="#6b6b66" stroke-width="1.5"/>
+<circle cx="320.0" cy="217.0" r="3.5" fill="#ffffff" stroke="#6b6b66" stroke-width="1.5"/>
+<circle cx="442.8" cy="194.6" r="3.5" fill="#ffffff" stroke="#6b6b66" stroke-width="1.5"/>
+<circle cx="402.8" cy="193.5" r="3.5" fill="#ffffff" stroke="#6b6b66" stroke-width="1.5"/>
+<circle cx="332.6" cy="185.1" r="3.5" fill="#ffffff" stroke="#6b6b66" stroke-width="1.5"/>
+<circle cx="289.2" cy="195.3" r="3.5" fill="#ffffff" stroke="#6b6b66" stroke-width="1.5"/>
+<line x1="586.0" x2="608.0" y1="112.0" y2="112.0" stroke="#6b6b66" stroke-width="2" stroke-dasharray="5 4"/>
+<text x="614.0" y="116.0" fill="#1c1c1a">gateway ack p99 (client)</text>
+<text x="586.0" y="162.0" font-size="11" fill="#6b6b66">at or above 10s: histogram ceiling</text>
+<circle cx="597.0" cy="138.0" r="3.5" fill="#ffffff" stroke="#6b6b66" stroke-width="1.5"/>
+<text x="614.0" y="142.0" fill="#6b6b66">not sustained</text>
+</svg>

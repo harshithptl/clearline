@@ -105,7 +105,10 @@ func TestJudge(t *testing.T) {
 	errs := base()
 	errs.Ack.Errors = 3
 	loadgen.Judge(&errs)
-	for name, r := range map[string]loadgen.Result{"slow": slow, "behind": behind, "errors": errs} {
+	balance := base()
+	balance.Pipeline.BalanceLag.End = 20000 // settlement keeps up, the cache does not
+	loadgen.Judge(&balance)
+	for name, r := range map[string]loadgen.Result{"slow": slow, "behind": behind, "errors": errs, "balance": balance} {
 		if r.Sustained {
 			t.Errorf("%s judged sustained", name)
 		}
@@ -118,7 +121,7 @@ func TestPlotSVG(t *testing.T) {
 		{SettledPerSec: 400, Sustained: false, Pipeline: loadgen.Pipeline{OrderToLedger: loadgen.Quantiles{P50: 30 * time.Millisecond, P99: 900 * time.Millisecond}}, Ack: loadgen.Latencies{P99: 80 * time.Millisecond}},
 	}}
 	var b strings.Builder
-	if err := r.PlotSVG(&b, "test <chart>"); err != nil {
+	if err := r.PlotSVG(&b, "test <chart>", "sub"); err != nil {
 		t.Fatal(err)
 	}
 	svg := b.String()
@@ -130,7 +133,7 @@ func TestPlotSVG(t *testing.T) {
 	if strings.Count(svg, "<circle") != 3*2+1 {
 		t.Fatalf("want 6 points + 1 legend marker, got %d circles", strings.Count(svg, "<circle"))
 	}
-	if err := (loadgen.Report{}).PlotSVG(&b, "empty"); err == nil {
+	if err := (loadgen.Report{}).PlotSVG(&b, "empty", ""); err == nil {
 		t.Fatal("empty report plotted")
 	}
 }

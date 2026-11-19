@@ -54,6 +54,7 @@ type options struct {
 	hardware            string
 	jsonOut, svgOut     string
 	scrapeWait, drain   time.Duration
+	replot              string
 }
 
 func main() {
@@ -80,7 +81,11 @@ func parseFlags() (options, error) {
 	flag.StringVar(&o.svgOut, "svg", "", "write a latency vs throughput chart to this file")
 	flag.DurationVar(&o.scrapeWait, "scrape-wait", 12*time.Second, "wait after each run for Prometheus to scrape")
 	flag.DurationVar(&o.drain, "drain-timeout", 3*time.Minute, "max wait for consumer lag to reach 0 between runs")
+	flag.StringVar(&o.replot, "replot", "", "re-judge an existing report, print it, and rewrite -json / -svg; no load is sent")
 	flag.Parse()
+	if o.replot != "" {
+		return o, nil
+	}
 	if o.hardware == "" {
 		return o, fmt.Errorf("-hardware is required: every number is reported with its hardware")
 	}
@@ -98,6 +103,9 @@ func parseFlags() (options, error) {
 }
 
 func run(o options) error {
+	if o.replot != "" {
+		return replot(o)
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -289,5 +297,30 @@ func writeSVG(path string, r loadgen.Report) error {
 		return err
 	}
 	defer f.Close()
-	return r.PlotSVG(f, "Clearline: latency vs throughput ("+symbol+" pairs, "+r.Environment.Hardware+")")
+	return r.PlotSVG(f, "Clearline: latency vs settled throughput",
+		r.Environment.Hardware+"; commit "+r.Environment.Commit)
+}
+
+func replot(o options) error {
+	b, err := os.ReadFile(filepath.Clean(o.replot))
+	if err != nil {
+		return err
+	}
+	var r loadgen.Report
+	if err := json.Unmarshal(b, &r); err != nil {
+		return err
+	}
+	for i := range r.Runs {
+		loadgen.Judge(&r.Runs[i]) // re-judge with the current criteria
+	}
+	r.PrintTable(os.Stdout)
+	if o.jsonOut != "" {
+		if err := writeJSON(o.jsonOut, r); err != nil {
+			return err
+		}
+	}
+	if o.svgOut == "" {
+		return nil
+	}
+	return writeSVG(o.svgOut, r)
 }

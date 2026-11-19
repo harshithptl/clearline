@@ -5,7 +5,7 @@ Event-driven trade settlement and ledger engine. Go services, Kafka, Postgres, R
 @docs/SPEC.md
 
 ## Current status
-- Phase 1 done (schema, invariants, BuildEntries, Settle, duplicate-delivery harness). Phase 2 done (Kafka pipeline, outbox relay, balance, reconciler, C++ engine + adapter, gateway, compose stack, e2e test in CI). CI + repo standards done. Dashboard (web/) done. Phase 3 in progress: Prometheus metrics + alerts done (docs/observability.md). Next: load generator + benchmark, then OpenTelemetry, Grafana, chaos tests. See SPEC section 11.
+- Phase 1 done (schema, invariants, BuildEntries, Settle, duplicate-delivery harness). Phase 2 done (Kafka pipeline, outbox relay, balance, reconciler, C++ engine + adapter, gateway, compose stack, e2e test in CI). CI + repo standards done. Dashboard (web/) done. Phase 3 in progress: Prometheus metrics + alerts done (docs/observability.md). Load generator + baseline benchmark done (docs/benchmarks: 250 trades/s sustained; balance service is the first bottleneck, settlement caps near 750/s). Next: batching (balance, then settlement) per SPEC 7.3, rerunning the sweep after each; then OpenTelemetry, Grafana, chaos tests. See SPEC section 11.
 - Update this line as phases complete.
 
 ## Hard rules for this codebase
@@ -41,7 +41,7 @@ Event-driven trade settlement and ledger engine. Go services, Kafka, Postgres, R
 - Full stack in containers: `make up-all` (compose profile `app`, image from deploy/docker/services.Dockerfile); end-to-end: `make e2e` (test/e2e, build tag e2e)
 - Dashboard: `make web-install` once, then `make web-dev` (:5173) or `make up-all` (:3000); `make web-check` (tsc, eslint, prettier, vitest, build); `make web-e2e` (Playwright vs stack). Node 24, npm; generate lockfile changes with npm 11+ (npm 10 has a peer-resolution bug)
 - Metrics: every service serves /metrics (adapter :9101, settlement :9102, relay :9103, others on their API port); Prometheus at :9090 in `make up-all`; `make prom-check` validates config and unit-tests alert rules
-- Load test: TBD
+- Load test: `make bench HARDWARE="..."` (needs `make up-all`); `go run ./cmd/loadgen -replot <json>` re-judges and redraws a saved run
 - Chaos tests: TBD
 - Local database URL: postgres://clearline:clearline@127.0.0.1:5432/clearline?sslmode=disable
 - Local Kafka: localhost:9092 from the host, kafka:19092 from containers. Local Valkey: localhost:6379
