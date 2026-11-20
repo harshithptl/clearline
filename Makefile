@@ -3,7 +3,7 @@ GOLANGCI := v2.15.0
 PROMETHEUS := prom/prometheus:v3.16.0
 
 .DEFAULT_GOAL := help
-.PHONY: help up up-all down reset migrate topics init test e2e lint vuln engine-test proto check web-install web-dev web-check web-e2e prom-check bench
+.PHONY: help up up-all down reset migrate topics init test e2e lint vuln engine-test proto check web-install web-dev web-check web-e2e prom-check bench chaos helm-lint helm-sync kind-e2e kind-down
 
 help: ## list targets
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -63,6 +63,11 @@ web-e2e: ## Playwright browser test against the running stack (needs make up-all
 prom-check: ## validate Prometheus config and unit-test the alert rules (promtool)
 	docker run --rm -v "$$PWD/deploy/prometheus":/etc/prometheus:ro --entrypoint promtool $(PROMETHEUS) check config /etc/prometheus/prometheus.yml
 	docker run --rm -v "$$PWD/deploy/prometheus":/etc/prometheus:ro -w /etc/prometheus --entrypoint promtool $(PROMETHEUS) test rules alerts_test.yml
+
+chaos: ## SPEC 5 failure tests on a FRESH stack (resets data): kills and restarts components under load
+	$(COMPOSE) --profile app down -v
+	$(COMPOSE) --profile app up -d --wait --build
+	go test -tags chaos -count=1 -v -timeout 40m ./test/chaos
 
 helm-lint: ## lint the Helm chart (deploy/helm/clearline) and check its alert rules match deploy/prometheus
 	helm lint deploy/helm/clearline

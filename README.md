@@ -83,6 +83,7 @@ make up-all   # infrastructure + all six services + dashboard (http://localhost:
 make kind-e2e # the same stack on Kubernetes (kind + Helm), e2e test against it
 make e2e      # place orders through the gateway, check ledger, outbox, balances, reconciler
 make web-e2e  # the same through a real browser (Playwright, needs `make web-install` once)
+make chaos    # kill and restart each component under load, prove nothing is lost or doubled (resets data)
 make down     # stop everything (data kept; make reset deletes it)
 ```
 
@@ -212,6 +213,7 @@ Progress:
 - [x] End-to-end: one order flows into the ledger (test/e2e, runs in CI)
 - [x] CI, linting, Dependabot, repo standards
 - [x] Load generator and benchmark ladder: 100 to 2000 trades/s sustained via batching and per-partition concurrency ([report](docs/benchmarks/README.md))
+- [x] Chaos tests: 8 SPEC 5 failure scenarios under load, all passing ([results](docs/chaos/README.md))
 - [x] Helm chart, installed on kind and tested end to end in CI ([deploy/helm](deploy/helm/README.md))
 - [x] Prometheus metrics on every service, in-pipeline latency measurement, alert rules with tests ([observability](docs/observability.md))
 - [x] Dashboard: live balances, trade tape over SSE, reconciler status, order form ([decision 0004](docs/decisions/0004-dashboard.md))
