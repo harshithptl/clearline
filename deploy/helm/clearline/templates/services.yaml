@@ -1,0 +1,12 @@
+{{- /* The six Go services. Ports: API port, or the /metrics port for consumers. */}}
+{{ include "clearline.goService" (dict "root" . "name" "gateway" "port" 8080 "probe" "/healthz" "cfg" .Values.gateway) }}
+---
+{{ include "clearline.goService" (dict "root" . "name" "matcher-adapter" "port" 9101 "probe" "/metrics" "cfg" .Values.matcherAdapter "replicas" 1 "recreate" true) }}
+---
+{{ include "clearline.goService" (dict "root" . "name" "settlement" "port" 9102 "probe" "/metrics" "cfg" .Values.settlement) }}
+---
+{{ include "clearline.goService" (dict "root" . "name" "outbox-relay" "port" 9103 "probe" "/metrics" "cfg" .Values.outboxRelay) }}
+---
+{{ include "clearline.goService" (dict "root" . "name" "balance" "port" 8081 "probe" "/healthz" "cfg" .Values.balance) }}
+---
+{{ include "clearline.goService" (dict "root" . "name" "reconciler" "port" 8082 "probe" "/healthz" "cfg" .Values.reconciler "replicas" 1) }}

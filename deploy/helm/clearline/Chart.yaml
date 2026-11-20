@@ -1,0 +1,9 @@
+apiVersion: v2
+name: clearline
+description: Event-driven trade settlement and double-entry ledger engine (Go services, C++ matching engine, Kafka, Postgres, Valkey).
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/harshithptl/clearline
+sources:
+  - https://github.com/harshithptl/clearline

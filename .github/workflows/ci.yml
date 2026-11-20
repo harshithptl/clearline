@@ -213,3 +213,69 @@ jobs:
       - name: stack logs
         if: failure()
         run: docker compose -f deploy/compose/docker-compose.yml --profile app logs --no-color --tail=200
+
+  # The Helm chart: lint, schema-validate every rendered resource, then
+  # install it on a throwaway kind cluster and run the e2e test against it.
+  kubernetes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      KIND_VERSION: v0.33.0
+      HELM_VERSION: v4.3.1
+      KUBECONFORM_VERSION: v0.8.0
+      KUBECTL_VERSION: v1.34.1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: install kind, helm, kubectl, kubeconform (checksums verified)
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/bin" && cd "$HOME/bin"
+          curl -sSLo kind "https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-linux-amd64"
+          echo "$(curl -sSL "https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-linux-amd64.sha256sum" | awk '{print $1}')  kind" | sha256sum -c -
+          curl -sSLO "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz"
+          curl -sSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz.sha256sum" | sha256sum -c -
+          tar xzf "helm-${HELM_VERSION}-linux-amd64.tar.gz" --strip-components=1 linux-amd64/helm
+          curl -sSLo kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+          echo "$(curl -sSL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl.sha256")  kubectl" | sha256sum -c -
+          curl -sSLO "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz"
+          curl -sSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/CHECKSUMS" | grep "kubeconform-linux-amd64.tar.gz" | sha256sum -c -
+          tar xzf kubeconform-linux-amd64.tar.gz kubeconform
+          chmod +x kind kubectl
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+      - name: lint and validate
+        run: |
+          make helm-lint
+          helm template clearline deploy/helm/clearline | kubeconform -strict -summary -kubernetes-version 1.34.0 -
+          helm template clearline deploy/helm/clearline --set infra.enabled=false \
+            --set external.databaseURL=postgres://x --set external.kafkaBrokers=k:9092 --set external.redisAddr=r:6379 \
+            | kubeconform -strict -summary -kubernetes-version 1.34.0 -
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: engine image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: engine/Dockerfile
+          target: runtime
+          tags: clearline-engine:dev
+          load: true
+          cache-from: type=gha,scope=engine
+      - name: services image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/docker/services.Dockerfile
+          tags: clearline:dev
+          load: true
+          cache-from: type=gha,scope=services
+      - name: web image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: web
+          tags: clearline-web:dev
+          load: true
+          cache-from: type=gha,scope=web
+      - name: kind e2e
+        run: SKIP_BUILD=1 scripts/kind-e2e.sh

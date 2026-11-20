@@ -1,0 +1,88 @@
+# Clearline Helm values. Defaults target a local kind cluster (images loaded
+# with `kind load`, in-cluster Postgres/Kafka/Valkey). See deploy/helm/README.md.
+
+images:
+  services:              # one image with every Go binary (deploy/docker/services.Dockerfile)
+    repository: clearline
+    tag: dev
+  engine:
+    repository: clearline-engine
+    tag: dev
+  web:
+    repository: clearline-web
+    tag: dev
+  pullPolicy: IfNotPresent
+
+# Gateway and matcher adapter must agree on symbols (SYMBOL:QUOTE:TICK:REFERENCE).
+symbols: "AAPL:USD:0.01:150,MSFT:USD:0.01:400,TSLA:USD:0.01:250,NVDA:USD:0.01:500,E2E:USD:0.01:100,WEB:USD:0.01:50,LOAD:USD:0.01:100,CHAOS:USD:0.01:100"
+redisPrefix: "clearline:"
+
+# Database credentials. The default password is for local clusters only.
+# In any shared environment set existingSecret to a Secret holding
+# DATABASE_URL (and POSTGRES_PASSWORD if infra.enabled).
+database:
+  user: clearline
+  password: clearline
+  name: clearline
+existingSecret: ""
+
+# In-cluster Postgres, Kafka (single KRaft broker) and Valkey, with the same
+# durability settings as compose (synchronous_commit=on, acks=all,
+# appendfsync always). For kind and dev. Set enabled=false and fill
+# `external` to use managed services instead.
+infra:
+  enabled: true
+  storage: 1Gi
+  storageClassName: ""   # "" = cluster default
+  postgres:
+    image: postgres:16
+  kafka:
+    image: apache/kafka:4.4.0
+  valkey:
+    image: valkey/valkey:9.1.3-alpine
+
+external:
+  databaseURL: ""        # used only when infra.enabled=false and existingSecret is empty
+  kafkaBrokers: ""
+  redisAddr: ""
+
+kafkaReplication: 1      # topic replication factor (cmd/topics)
+
+# Per service. resources apply to the main container.
+defaultResources: &res
+  requests: {cpu: 50m, memory: 64Mi}
+  limits: {memory: 256Mi}
+
+gateway:
+  replicas: 1
+  resources: *res
+matcherAdapter:
+  # Exactly one: it owns the engine session and replays the orders log on
+  # start (docs/decisions/0002-matcher-replay.md). Recreate on rollout.
+  resources: *res
+settlement:
+  replicas: 1            # up to the trades partition count (3)
+  resources: *res
+outboxRelay:
+  replicas: 1            # more than 1 adds hot standbys (advisory-lock leader)
+  resources: *res
+balance:
+  replicas: 1            # stream fan-out is per instance; see decision 0004
+  resources: *res
+reconciler:
+  resources: *res
+engine:
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {memory: 1Gi}
+web:
+  enabled: true
+  replicas: 1
+  resources:
+    requests: {cpu: 10m, memory: 16Mi}
+    limits: {memory: 64Mi}
+
+prometheus:
+  enabled: true
+  image: prom/prometheus:v3.16.0
+  retention: 2d

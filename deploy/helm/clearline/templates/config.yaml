@@ -1,0 +1,37 @@
+{{- $full := include "clearline.fullname" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $full }}-config
+  labels:
+    {{- include "clearline.labels" . | nindent 4 }}
+data:
+  {{- if .Values.infra.enabled }}
+  CLEARLINE_KAFKA_BROKERS: {{ printf "%s-kafka:9092" $full | quote }}
+  CLEARLINE_REDIS_ADDR: {{ printf "%s-valkey:6379" $full | quote }}
+  {{- else }}
+  CLEARLINE_KAFKA_BROKERS: {{ required "external.kafkaBrokers is required when infra.enabled=false" .Values.external.kafkaBrokers | quote }}
+  CLEARLINE_REDIS_ADDR: {{ required "external.redisAddr is required when infra.enabled=false" .Values.external.redisAddr | quote }}
+  {{- end }}
+  CLEARLINE_REDIS_PREFIX: {{ .Values.redisPrefix | quote }}
+  CLEARLINE_MATCHER_ADDR: {{ printf "%s-engine:50051" $full | quote }}
+  CLEARLINE_SYMBOLS: {{ .Values.symbols | quote }}
+  CLEARLINE_KAFKA_REPLICATION: {{ .Values.kafkaReplication | quote }}
+{{- if not .Values.existingSecret }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $full }}-db
+  labels:
+    {{- include "clearline.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  {{- $d := .Values.database }}
+  {{- if .Values.infra.enabled }}
+  DATABASE_URL: {{ printf "postgres://%s:%s@%s-postgres:5432/%s?sslmode=disable" $d.user $d.password $full $d.name | quote }}
+  POSTGRES_PASSWORD: {{ $d.password | quote }}
+  {{- else }}
+  DATABASE_URL: {{ required "external.databaseURL is required when infra.enabled=false and no existingSecret" .Values.external.databaseURL | quote }}
+  {{- end }}
+{{- end }}

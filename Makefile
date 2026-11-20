@@ -3,7 +3,7 @@ GOLANGCI := v2.15.0
 PROMETHEUS := prom/prometheus:v3.16.0
 
 .DEFAULT_GOAL := help
-.PHONY: help up up-all down reset migrate topics init test e2e lint vuln engine-test proto check web-install web-dev web-check web-e2e prom-check bench chaos
+.PHONY: help up up-all down reset migrate topics init test e2e lint vuln engine-test proto check web-install web-dev web-check web-e2e prom-check bench chaos helm-lint helm-sync kind-e2e kind-down
 
 help: ## list targets
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -68,6 +68,19 @@ chaos: ## SPEC 5 failure tests on a FRESH stack (resets data): kills and restart
 	$(COMPOSE) --profile app down -v
 	$(COMPOSE) --profile app up -d --wait --build
 	go test -tags chaos -count=1 -v -timeout 40m ./test/chaos
+
+helm-lint: ## lint the Helm chart (deploy/helm/clearline) and check its alert rules match deploy/prometheus
+	helm lint deploy/helm/clearline
+	@diff -q deploy/prometheus/alerts.yml deploy/helm/clearline/files/alerts.yml || (echo "run make helm-sync" && exit 1)
+
+helm-sync: ## copy deploy/prometheus/alerts.yml into the chart
+	cp deploy/prometheus/alerts.yml deploy/helm/clearline/files/alerts.yml
+
+kind-e2e: ## deploy the chart to a local kind cluster and run the e2e test against it (needs kind, helm, kubectl)
+	scripts/kind-e2e.sh
+
+kind-down: ## delete the kind cluster
+	kind delete cluster --name clearline
 
 bench: ## latency/throughput sweep against the running stack (make up-all); set HARDWARE="..."
 	@test -n "$(HARDWARE)" || (echo 'set HARDWARE="cpu, memory, docker resources"' && exit 1)
