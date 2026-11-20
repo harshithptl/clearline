@@ -11,9 +11,9 @@ x-app: &app
     CLEARLINE_REDIS_ADDR: valkey:6379
     CLEARLINE_MATCHER_ADDR: engine:50051
     # Gateway and matcher adapter must agree on symbols. E2E and WEB are books
-    # used only by test/e2e and web/e2e, LOAD only by cmd/loadgen, so their orders
+    # used only by test/e2e and web/e2e, LOAD only by cmd/loadgen, CHAOS only by test/chaos, so their orders
     # never meet manual ones.
-    CLEARLINE_SYMBOLS: AAPL:USD:0.01:150,MSFT:USD:0.01:400,TSLA:USD:0.01:250,NVDA:USD:0.01:500,E2E:USD:0.01:100,WEB:USD:0.01:50,LOAD:USD:0.01:100
+    CLEARLINE_SYMBOLS: AAPL:USD:0.01:150,MSFT:USD:0.01:400,TSLA:USD:0.01:250,NVDA:USD:0.01:500,E2E:USD:0.01:100,WEB:USD:0.01:50,LOAD:USD:0.01:100,CHAOS:USD:0.01:100
 
 x-after-init: &after-init
   migrate: {condition: service_completed_successfully}
